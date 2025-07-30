@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="UTF-8" />
+        <title>Редактор изображений</title>
+        <link rel="stylesheet" href="editor.css" />
+    </head>
+    <body>
+        <div class="container">
+            <div class="toolbar">
+                <input type="file" id="fileInput" accept="image/*" />
+                <button id="cropBtn" title="Crop"></button>
+                <button id="blurBtn" title="Blur"></button>
+                <button id="highlightBtn" title="Highlight"></button>
+                <button id="lineBtn" title="Arrow"></button>
+                <button id="saveBtn" title="Сохранить"></button>
+                <button id="undoBtn" title="Отменить"></button>
+                <div
+                    id="toolSettings"
+                    style="display: none; gap: 15px; align-items: center"
+                >
+                    <label id="blurRadiusLabel" style="display: none">
+                        Радиус:
+                        <input
+                            type="range"
+                            id="blurRadius"
+                            min="1"
+                            max="20"
+                            value="5"
+                        />
+                    </label>
+
+                    <label id="highlightColorLabel" style="display: none">
+                        Цвет:
+                        <input
+                            type="color"
+                            id="highlightColor"
+                            value="#ff0000"
+                        />
+                    </label>
+
+                    <label id="formatLabel" style="display: none">
+                        Формат:
+                        <select id="formatSelect">
+                            <option value="png">PNG</option>
+                            <option value="jpeg">JPEG</option>
+                            <option value="webp">WebP</option>
+                        </select>
+                    </label>
+
+                    <label id="qualityLabel" style="display: none">
+                        Качество:
+                        <input
+                            type="range"
+                            id="qualityRange"
+                            min="0.1"
+                            max="1"
+                            step="0.1"
+                            value="0.9"
+                        />
+                        <span id="qualityValue">90%</span>
+                    </label>
+                </div>
+            </div>
+            <div class="editor-area">
+                <canvas id="canvas"></canvas>
+                <div id="selectionOverlay"></div>
+            </div>
+        </div>
+        <script src="editor.js"></script>
+    </body>
+</html>

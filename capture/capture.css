@@ -1,0 +1,49 @@
+body {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+.overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 100;
+}
+
+.selection-area {
+  position: absolute;
+  display: none;
+  border: 2px dashed #fff;
+  background: rgba(255, 255, 255, 0.2);
+  z-index: 101;
+}
+
+.controls {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 102;
+  display: flex;
+  gap: 10px;
+}
+
+button {
+  padding: 8px 16px;
+  background: #4a76a8;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+button:hover {
+  background: #3a5f8a;
+}
+
+button:disabled {
+  background: #cccccc;
+  cursor: not-allowed;
+}
