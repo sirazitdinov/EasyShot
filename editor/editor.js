@@ -10,11 +10,6 @@ const selectionOverlay = document.getElementById('selectionOverlay');
 const formatSelect = document.getElementById('formatSelect');
 const qualityRange = document.getElementById('qualityRange');
 const qualityValue = document.getElementById('qualityValue');
-
-/* ---------- ПЕРЕМЕННЫЕ ---------- */
-let layers = [];          // {type, rect, params}
-let activeLayer = null;        // текущий слой
-let dragState = null;        // {start, layer, handle, orig}
 const undoBtn = document.getElementById('undoBtn');
 const toolSettings = document.getElementById('toolSettings');
 const blurRadiusInput = document.getElementById('blurRadius');
@@ -22,9 +17,11 @@ const highlightColorInput = document.getElementById('highlightColor');
 const blurRadiusLabel = document.getElementById('blurRadiusLabel');
 const highlightColorLabel = document.getElementById('highlightColorLabel');
 let historyStack = [];
+let layers = [];          // {type, rect, params}
+let activeLayer = null;   // текущий слой
+let dragState = null;     // {start, layer, handle, orig}
 
-/* ---------- НОВЫЙ РАЗМЕР РУЧЕК ---------- */
-const HANDLE_SIZE = 8;        // было 6 – стало 12
+const HANDLE_SIZE = 8;        // размер ручек изменения размера областей
 const HANDLES = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'];
 
 let image = null;
@@ -34,11 +31,28 @@ let originalImageData = null;
 
 /* ---------- ИНИЦИАЛИЗАЦИЯ ---------- */
 function init() {
+    const fileBtn = document.getElementById('fileBtn');
+    fileBtn.addEventListener('click', () => fileInput.click());
+
     undoBtn.addEventListener('click', undoLastAction);
     blurRadiusInput.addEventListener('input', debounce(() => {
-        if (currentTool === 'blur') updateBlurRadius();
+        if (activeLayer?.type === 'blur') {
+            saveState(); // Сохраняем состояние перед изменением
+            activeLayer.params.radius = +blurRadiusInput.value;
+            render();
+        }
     }, 150));
-    highlightColorInput.addEventListener('input', updateHighlightColor);
+    highlightColorInput.addEventListener('input', () => {
+        if (activeLayer?.type === 'highlight' || activeLayer?.type === 'line') {
+            saveState(); // Сохраняем состояние перед изменением
+            if (activeLayer.type === 'highlight') {
+                activeLayer.params.color = highlightColorInput.value;
+            } else {
+                activeLayer.points.color = highlightColorInput.value;
+            }
+            render();
+        }
+    });
     fileInput.addEventListener('change', handleFileSelect);
 
     cropBtn.addEventListener('click', () => startLayerCreation('crop'));
@@ -74,10 +88,12 @@ function init() {
 function setToolsDisabled(d) {
     [cropBtn, blurBtn, highlightBtn, saveBtn].forEach(b => b.disabled = d);
 }
+
 function debounce(fn, delay) {
     let t;
     return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), delay); };
 }
+
 async function handleFileSelect(e) {
     const file = e.target.files[0];
     if (!file) return;
@@ -88,10 +104,14 @@ async function handleFileSelect(e) {
             r.onerror = () => rej(new Error('File reading failed'));
             r.readAsDataURL(file);
         });
+
+        // Обновляем информацию о файле
+        document.getElementById('fileSize').textContent = formatFileSize(file.size);
         await loadImage(url);
         setToolsDisabled(false);
     } catch (err) { alert('Ошибка загрузки изображения'); }
 }
+
 function loadImage(src) {
     return new Promise(res => {
         image = new Image();
@@ -102,23 +122,41 @@ function loadImage(src) {
                 0, 0, canvas.width, canvas.height);
             adjustEditorSize();
             originalImageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+
+            // Обновляем информацию о размерах
+            document.getElementById('imageWidth').textContent = `${canvas.width}px`;
+            document.getElementById('imageHeight').textContent = `${canvas.height}px`;
+            document.getElementById('imageSize').textContent = `${canvas.width}×${canvas.height}px`;
+
             res();
         };
         image.src = src;
     });
 }
+
 function adjustEditorSize() {
     const c = document.querySelector('.container');
     c.style.width = `${canvas.width + 40}px`;
     c.style.height = `${canvas.height + 100}px`;
 }
+
 function resetSelection() {
     activeLayer = null;
     render();
 }
 
+function formatFileSize(bytes) {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+}
+
 /* ---------- РАБОТА СО СЛОЯМИ ---------- */
 function startLayerCreation(type) {
+    saveState(); // Сохраняем состояние перед созданием нового слоя
+
     // Проверяем, есть ли уже кроп (только для типа 'crop')
     if (type === 'crop' && layers.some(l => l.type === 'crop')) {
         // Активируем существующий кроп для редактирования
@@ -318,6 +356,9 @@ function onMouseMove(e) {
 }
 
 function onMouseUp() {
+    if (dragState) {
+        saveState(); // Сохраняем состояние после завершения перемещения/изменения
+    }
     dragState = null;
     selectionOverlay.className = '';
     render();
@@ -349,6 +390,9 @@ function onHover(e) {
 
 /* ---------- ОБНОВЛЕНИЕ RECT ПРИ РЕСАЙЗЕ ---------- */
 function updateRectFromHandle(handle, layer, start, x, y) {
+    if (!dragState) return;
+    saveState(); // Сохраняем состояние перед изменением размера
+
     const { orig } = dragState;
     const dx = x - start.x;
     const dy = y - start.y;
@@ -518,14 +562,35 @@ function drawHandles(ctx, rect) {
 }
 
 /* ---------- СОХРАНЕНИЕ / ОТМЕНА ---------- */
-function saveState() { historyStack.push(ctx.getImageData(0, 0, canvas.width, canvas.height)); }
+function saveState() {
+    // Сохраняем текущее состояние canvas и слоев
+    historyStack.push({
+        imageData: ctx.getImageData(0, 0, canvas.width, canvas.height),
+        layers: JSON.parse(JSON.stringify(layers)) // Глубокая копия слоев
+    });
+
+    // Ограничиваем размер истории (последние 20 действий)
+    if (historyStack.length > 20) {
+        historyStack.shift();
+    }
+}
 
 function undoLastAction() {
     if (!historyStack.length) return;
-    const s = historyStack.pop();
-    canvas.width = s.width; canvas.height = s.height;
-    ctx.putImageData(s, 0, 0); adjustEditorSize();
-    originalImageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+
+    const lastState = historyStack.pop();
+
+    // Восстанавливаем изображение
+    ctx.putImageData(lastState.imageData, 0, 0);
+
+    // Восстанавливаем слои
+    layers = JSON.parse(JSON.stringify(lastState.layers));
+
+    // Обновляем активный слой
+    activeLayer = layers.length > 0 ? layers[layers.length - 1] : null;
+
+    // Перерисовываем
+    render();
 }
 
 function updateBlurRadius() { }   // значение берётся при рендере

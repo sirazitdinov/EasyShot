@@ -1,7 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Screenshot Tool",
+  "name": "EasyShot",
   "version": "1.0",
+  "description": "EasyShot is a simple and convenient screenshot extension with a built-in image editor. Capture screens, add annotations, and share your screenshots.",
   "permissions": [
     "activeTab",
     "scripting",
