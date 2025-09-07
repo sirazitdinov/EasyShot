@@ -1,33 +1,35 @@
-const fileInput = document.getElementById('fileInput');
-const cropBtn = document.getElementById('cropBtn');
 const blurBtn = document.getElementById('blurBtn');
-const highlightBtn = document.getElementById('highlightBtn');
-const lineBtn = document.getElementById('lineBtn');
-const saveBtn = document.getElementById('saveBtn');
-const canvas = document.getElementById('canvas');
-const ctx = canvas.getContext('2d', { willReadFrequently: true });
-const selectionOverlay = document.getElementById('selectionOverlay');
-const formatSelect = document.getElementById('formatSelect');
-const qualityRange = document.getElementById('qualityRange');
-const qualityValue = document.getElementById('qualityValue');
-const undoBtn = document.getElementById('undoBtn');
-const toolSettings = document.getElementById('toolSettings');
 const blurRadiusInput = document.getElementById('blurRadius');
-const highlightColorInput = document.getElementById('highlightColor');
 const blurRadiusLabel = document.getElementById('blurRadiusLabel');
-const highlightColorLabel = document.getElementById('highlightColorLabel');
-let historyStack = [];
-let layers = [];          // {type, rect, params}
-let activeLayer = null;   // текущий слой
-let dragState = null;     // {start, layer, handle, orig}
-
+const canvas = document.getElementById('canvas');
+const cropBtn = document.getElementById('cropBtn');
+const ctx = canvas.getContext('2d', { willReadFrequently: true });
+const dpr = window.devicePixelRatio || 1;
+const fileInput = document.getElementById('fileInput');
+const formatSelect = document.getElementById('formatSelect');
 const HANDLE_SIZE = 8;        // размер ручек изменения размера областей
 const HANDLES = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'];
+const highlightBtn = document.getElementById('highlightBtn');
+const highlightColorInput = document.getElementById('highlightColor');
+const highlightColorLabel = document.getElementById('highlightColorLabel');
+const lineBtn = document.getElementById('lineBtn');
+const qualityLabel = document.getElementById('qualityLabel');
+const qualityRange = document.getElementById('qualityRange');
+const qualityValue = document.getElementById('qualityValue');
+const saveBtn = document.getElementById('saveBtn');
+const selectionOverlay = document.getElementById('selectionOverlay');
+const toolSettings = document.getElementById('toolSettings');
+const undoBtn = document.getElementById('undoBtn');
 
-let image = null;
-const dpr = window.devicePixelRatio || 1;
+let activeLayer = null;   // текущий слой
 let currentTool = null;
+let dragState = null;     // {start, layer, handle, orig}
+let historyStack = [];
+let image = null;
+let layers = [];          // {type, rect, params}
 let originalImageData = null;
+
+
 
 /* ---------- ИНИЦИАЛИЗАЦИЯ ---------- */
 function init() {
@@ -208,8 +210,8 @@ function startLayerCreation(type) {
 /* ---------- ОБРАБОТЧИКИ МЫШИ ---------- */
 function onMouseDown(e) {
     const r = canvas.getBoundingClientRect();
-    const x = e.clientX - r.left;
-    const y = e.clientY - r.top;
+    const x = (e.clientX - r.left) * (canvas.width / r.width);
+    const y = (e.clientY - r.top) * (canvas.height / r.height);
 
     let hit = null;
     for (const l of layers) {
@@ -228,11 +230,21 @@ function onMouseDown(e) {
     if (hit?.rect) {
         for (const h of HANDLES) {
             const [dx, dy] = {
-                nw: [-1, -1], n: [0, -1], ne: [1, -1], w: [-1, 0], e: [1, 0], sw: [-1, 1], s: [0, 1], se: [1, 1]
+                nw: [-1, -1], n: [0, -1], ne: [1, -1], w: [-1, 0], e: [1, 0],
+                sw: [-1, 1], s: [0, 1], se: [1, 1]
             }[h];
-            const hx = hit.rect.x + hit.rect.width * (dx + 1) / 2 - HANDLE_SIZE / 2;
-            const hy = hit.rect.y + hit.rect.height * (dy + 1) / 2 - HANDLE_SIZE / 2;
-            if (x >= hx && x <= hx + HANDLE_SIZE && y >= hy && y <= hy + HANDLE_SIZE) {
+
+            // Координаты центра ручки
+            const centerX = hit.rect.x + hit.rect.width * (dx + 1) / 2;
+            const centerY = hit.rect.y + hit.rect.height * (dy + 1) / 2;
+
+            // Область попадания
+            const hitSize = HANDLE_SIZE;
+            const hitX = centerX - hitSize / 2;
+            const hitY = centerY - hitSize / 2;
+
+            if (x >= hitX && x <= hitX + hitSize &&
+                y >= hitY && y <= hitY + hitSize) {
                 handleHit = h;
                 break;
             }
@@ -312,8 +324,8 @@ function onMouseDown(e) {
 function onMouseMove(e) {
     if (!dragState) return;
     const r = canvas.getBoundingClientRect();
-    const x = e.clientX - r.left;
-    const y = e.clientY - r.top;
+    const x = (e.clientX - r.left) * (canvas.width / r.width);
+    const y = (e.clientY - r.top) * (canvas.height / r.height);
 
     const { handle, layer, start, orig } = dragState;
 
@@ -366,24 +378,36 @@ function onMouseUp() {
 
 function onHover(e) {
     const r = canvas.getBoundingClientRect();
-    const x = e.clientX - r.left;
-    const y = e.clientY - r.top;
+    const x = (e.clientX - r.left) * (canvas.width / r.width);
+    const y = (e.clientY - r.top) * (canvas.height / r.height);
+
     let cls = '';
 
     /* ручки */
     for (const l of layers) {
         if (!l.rect) continue;
+
         for (const h of HANDLES) {
             const [dx, dy] = {
                 nw: [-1, -1], n: [0, -1], ne: [1, -1], w: [-1, 0], e: [1, 0], sw: [-1, 1], s: [0, 1], se: [1, 1]
             }[h];
-            const hx = l.rect.x + l.rect.width * (dx + 1) / 2 - HANDLE_SIZE / 2;
-            const hy = l.rect.y + l.rect.height * (dy + 1) / 2 - HANDLE_SIZE / 2;
-            if (x >= hx && x <= hx + HANDLE_SIZE && y >= hy && y <= hy + HANDLE_SIZE) {
+
+            // Координаты центра ручки
+            const centerX = l.rect.x + l.rect.width * (dx + 1) / 2;
+            const centerY = l.rect.y + l.rect.height * (dy + 1) / 2;
+
+            // Область попадания (увеличим для лучшего UX)
+            const hitSize = HANDLE_SIZE;
+            const hitX = centerX - hitSize / 2;
+            const hitY = centerY - hitSize / 2;
+
+            if (x >= hitX && x <= hitX + hitSize &&
+                y >= hitY && y <= hitY + hitSize) {
                 cls = `resize-${h}`;
                 break;
             }
         }
+        if (cls) break;
     }
     selectionOverlay.className = cls;
 }
@@ -490,7 +514,9 @@ function render() {
             const { x1, y1, x2, y2, color } = l.points;
             ctx.strokeStyle = color;
             ctx.lineWidth = 2;
-            ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2);
+            ctx.beginPath();
+            ctx.moveTo(x1, y1);
+            ctx.lineTo(x2, y2);
             const ang = Math.atan2(y2 - y1, x2 - x1);
             const arr = 10;
             ctx.lineTo(x2 - arr * Math.cos(ang - Math.PI / 6), y2 - arr * Math.sin(ang - Math.PI / 6));
@@ -549,13 +575,24 @@ function drawHandles(ctx, rect) {
 
     ctx.save();
     ctx.fillStyle = '#0096ff';
+
+    // Учитываем devicePixelRatio при отрисовке ручек
+    const handleSize = HANDLE_SIZE * dpr;
+
     HANDLES.forEach(h => {
         const [dx, dy] = {
             nw: [-1, -1], n: [0, -1], ne: [1, -1], w: [-1, 0], e: [1, 0],
             sw: [-1, 1], s: [0, 1], se: [1, 1]
         }[h];
-        const hx = rect.x + rect.width * (dx + 1) / 2 - HANDLE_SIZE / 2;
-        const hy = rect.y + rect.height * (dy + 1) / 2 - HANDLE_SIZE / 2;
+
+        // Координаты центра ручки
+        const centerX = rect.x + rect.width * (dx + 1) / 2;
+        const centerY = rect.y + rect.height * (dy + 1) / 2;
+
+        // Позиция ручки (центрированная)
+        const hx = centerX - HANDLE_SIZE / 2;
+        const hy = centerY - HANDLE_SIZE / 2;
+
         ctx.fillRect(hx, hy, HANDLE_SIZE, HANDLE_SIZE);
     });
     ctx.restore();
