@@ -175,3 +175,40 @@ function cropImage(fullDataUrl, coordinates) {
     img.src = fullDataUrl;
   });
 }
+
+// Обработчик горячих клавиш
+chrome.commands.onCommand.addListener((command) => {
+  if (command === "toggle-ruler") {
+    chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
+      if (tabs[0] && tabs[0].id) {
+        chrome.tabs.sendMessage(
+          tabs[0].id,
+          {action: "toggleRuler"},
+          (response) => {
+            if (chrome.runtime.lastError) {
+              console.log('Content script not ready yet, injecting...');
+              // Если content script еще не готов, инжектим его
+              chrome.scripting.executeScript({
+                target: {tabId: tabs[0].id},
+                files: ['content.js']
+              }).then(() => {
+                // После инжекта отправляем сообщение
+                chrome.tabs.sendMessage(tabs[0].id, {action: "toggleRuler"});
+              }).catch(error => {
+                console.error('Error injecting content script:', error);
+              });
+            } else if (response) {
+              console.log('Ruler toggled:', response);
+            }
+          }
+        );
+      }
+    });
+  }
+});
+
+// Обработчик клика по иконке расширения
+chrome.action.onClicked.addListener((tab) => {
+  // Можно добавить дополнительную функциональность
+  console.log('Extension icon clicked');
+});
