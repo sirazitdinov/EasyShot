@@ -21,3 +21,32 @@ button {
 button:hover {
   background: #3a5f8a;
 }
+
+.pixel-ruler-size-top {
+  transform: translateX(-50%);
+  margin-top: -5px;
+}
+
+.pixel-ruler-size-bottom {
+  transform: translateX(-50%);
+  margin-top: 5px;
+}
+
+.pixel-ruler-size-left {
+  transform: translateY(-50%);
+  margin-left: -5px;
+  writing-mode: vertical-lr;
+  text-orientation: mixed;
+}
+
+.pixel-ruler-size-right {
+  transform: translateY(-50%);
+  margin-left: 5px;
+  writing-mode: vertical-lr;
+  text-orientation: mixed;
+}
+
+.pixel-ruler-size-diagonal {
+  transform: translate(-50%, -50%);
+  background: rgba(255, 100, 0, 0.9) !important;
+}
