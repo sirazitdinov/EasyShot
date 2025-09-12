@@ -212,16 +212,16 @@ class PixelRuler {
 
             if (isRightDirection) {
                 // Выделение справа - ширина начинается от начальной точки
-                widthX = (startX -5) + OFFSET;
+                widthX = (startX - 5) + OFFSET;
             } else {
                 // Выделение слева - ширина заканчивается у начальной точки
-                widthX = (startX+5) - widthDisplayWidth - OFFSET;
+                widthX = (startX + 5) - widthDisplayWidth - OFFSET;
             }
 
             // Размещаем ширину с внешней стороны выделения
             if (isDownDirection) {
                 // Выделение вниз - ширина сверху
-                widthY = rectTop  - widthDisplayHeight - OFFSET;
+                widthY = rectTop - widthDisplayHeight - OFFSET;
             } else {
                 // Выделение вверх - ширина снизу
                 widthY = rectTop + height + OFFSET;
@@ -242,7 +242,7 @@ class PixelRuler {
             // Размещаем высоту с внешней стороны выделения
             if (isRightDirection) {
                 // Выделение справа - высота слева
-                heightX = (rectLeft+17) - heightDisplayWidth - OFFSET;
+                heightX = (rectLeft + 17) - heightDisplayWidth - OFFSET;
             } else {
                 // Выделение слева - высота справа
                 heightX = rectLeft + width + OFFSET;
@@ -318,31 +318,22 @@ class PixelRuler {
     }
 }
 
+// Инициализация при загрузке страницы
+console.log('Pixel Ruler content script loaded');
+
+// Автоматическая инициализация
+pixelRuler = new PixelRuler();
+
+// Уведомляем background script
+chrome.runtime.sendMessage({ status: 'RULER_INITIALIZED' });
+
 // Обработчик сообщений от popup и background
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (request.action === "toggleRuler") {
-        try {
-            if (!pixelRuler) {
-                pixelRuler = new PixelRuler();
-            }
-            pixelRuler.toggle();
-            sendResponse({ status: "success", active: pixelRuler.isActive });
-        } catch (error) {
-            console.error('Error toggling ruler:', error);
-            sendResponse({ status: "error", message: error.message });
-        }
-        return true; // Сообщаем, что ответ будет асинхронным
-    }
-
-    if (request.action === "getRulerStatus") {
-        sendResponse({
-            status: "success",
-            active: pixelRuler ? pixelRuler.isActive : false
-        });
+        pixelRuler.toggle();
+        sendResponse({ status: "success", active: pixelRuler.isActive });
+        return true
     }
 
     return true;
 });
-
-// Инициализация при загрузке страницы
-console.log('Pixel Ruler content script loaded');
