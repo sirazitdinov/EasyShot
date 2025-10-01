@@ -6,12 +6,6 @@ async function handleAction(action) {
       throw new Error(response?.error || 'Action failed');
     }
 
-    if (action === "captureFullScreen" && response.imageUrl) {
-      await chrome.runtime.sendMessage({
-        action: "saveImage",
-        dataUrl: response.imageUrl
-      });
-    }
   } catch (error) {
     console.error('Action error:', error);
     alert(`Error: ${error.message}`);

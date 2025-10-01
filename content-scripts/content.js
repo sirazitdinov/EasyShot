@@ -58,7 +58,14 @@ class PixelRuler {
         this.overlay.addEventListener('mouseup', this.handleMouseUp.bind(this));
 
         // Обработчик для закрытия по ESC
+        // document.addEventListener('keydown', this.handleKeyDown.bind(this));
+
+        // Добавляем обработчик на оверлей И на document
+        this.overlay.addEventListener('keydown', this.handleKeyDown.bind(this));
         document.addEventListener('keydown', this.handleKeyDown.bind(this));
+
+        // Делаем оверлей фокусируемым для событий клавиатуры
+        this.overlay.setAttribute('tabindex', '-1');
     }
 
     handleMouseDown(e) {
@@ -124,6 +131,10 @@ class PixelRuler {
                 this.hideTimeout = null;
             }
             this.deactivate();
+
+            // Предотвращаем всплытие события
+            e.preventDefault();
+            e.stopPropagation();
         }
     }
 
@@ -270,6 +281,7 @@ class PixelRuler {
 
         this.isActive = true;
         this.overlay.style.display = 'block';
+        this.overlay.focus();
         document.body.style.cursor = 'crosshair';
         document.body.style.userSelect = 'none';
 
