@@ -20,6 +20,11 @@ const saveBtn = document.getElementById('saveBtn');
 const selectionOverlay = document.getElementById('selectionOverlay');
 const toolSettings = document.getElementById('toolSettings');
 const undoBtn = document.getElementById('undoBtn');
+const textBtn = document.getElementById('textBtn');
+const textColorInput = document.getElementById('textColor');
+const textColorLabel = document.getElementById('textColorLabel');
+const textSizeInput = document.getElementById('textSize');
+const textSizeLabel = document.getElementById('textSizeLabel');
 
 let activeLayer = null;   // текущий слой
 let currentTool = null;
@@ -44,6 +49,7 @@ function init() {
             render();
         }
     }, 150));
+
     highlightColorInput.addEventListener('input', () => {
         if (activeLayer?.type === 'highlight' || activeLayer?.type === 'line') {
             saveState(); // Сохраняем состояние перед изменением
@@ -55,6 +61,23 @@ function init() {
             render();
         }
     });
+
+    textColorInput.addEventListener('input', () => {
+    if (activeLayer?.type === 'text') {
+        saveState();
+        activeLayer.params.color = textColorInput.value;
+        render();
+        }
+    });
+
+    textSizeInput.addEventListener('input', () => {
+    if (activeLayer?.type === 'text') {
+        saveState();
+        activeLayer.params.fontSize = +textSizeInput.value;
+        render();
+    }
+});
+
     fileInput.addEventListener('change', handleFileSelect);
 
     cropBtn.addEventListener('click', () => startLayerCreation('crop'));
@@ -62,6 +85,7 @@ function init() {
     highlightBtn.addEventListener('click', () => startLayerCreation('highlight'));
     lineBtn.addEventListener('click', () => startLayerCreation('line'));
     saveBtn.addEventListener('click', saveImage);
+    textBtn.addEventListener('click', () => startLayerCreation('text'));
 
     document.addEventListener('keydown', e => { if (e.key === 'Escape') resetSelection(); });
     formatSelect.addEventListener('change', () => {
@@ -82,6 +106,7 @@ function init() {
             render();
         }
     });
+
 
     setToolsDisabled(true);
 }
@@ -180,7 +205,8 @@ function startLayerCreation(type) {
         'crop': cropBtn,
         'blur': blurBtn,
         'highlight': highlightBtn,
-        'line': lineBtn
+        'line': lineBtn,
+        'text': textBtn
     }[currentTool];
     if (activeBtn) activeBtn.classList.add('active');
 
@@ -194,6 +220,8 @@ function startLayerCreation(type) {
 
     blurRadiusLabel.style.display = type === 'blur' ? 'flex' : 'none';
     highlightColorLabel.style.display = (type === 'highlight' || type === 'line') ? 'flex' : 'none';
+    textColorLabel.style.display = type === 'text' ? 'flex' : 'none';
+    textSizeLabel.style.display = type === 'text' ? 'flex' : 'none';
     formatLabel.style.display = 'flex';
     qualityLabel.style.display = formatSelect.value !== 'png' ? 'flex' : 'none';
     toolSettings.style.display = 'flex';
@@ -213,6 +241,8 @@ function onMouseDown(e) {
     const x = (e.clientX - r.left) * (canvas.width / r.width);
     const y = (e.clientY - r.top) * (canvas.height / r.height);
 
+
+
     let hit = null;
     for (const l of layers) {
         if (l.rect &&
@@ -223,6 +253,18 @@ function onMouseDown(e) {
             const d2 = Math.hypot(x - l.points.x2, y - l.points.y2);
             if (d1 < 10 || d2 < 10) { hit = l; break; }
         }
+    }
+
+    // Проверка на двойной клик по текстовому слою
+    if (e.detail === 2 && hit && hit.type === 'text') {
+        e.preventDefault();
+        const newText = prompt('Введите текст:', hit.params.text || '');
+        if (newText !== null) {
+            saveState();
+            hit.params.text = newText;
+            render();
+        }
+        return;
     }
 
     /* проверка попадания в ручку */
@@ -257,6 +299,7 @@ function onMouseDown(e) {
         selectionOverlay.className = `resize-${handleHit}`;
         return;
     }
+
     if (hit) {
         activeLayer = hit;
         const isRect = !!hit.rect;
@@ -316,6 +359,24 @@ function onMouseDown(e) {
                 points: { x1: x, y1: y, x2: x, y2: y, color: highlightColorInput.value }
             };
             dragState = { start: { x, y }, layer: activeLayer, handle: 'x2', orig: { x1: x, y1: y, x2: x, y2: y } };
+            layers.push(activeLayer);
+            break;
+        case 'text':
+            activeLayer = {
+                type: 'text',
+                rect: { x, y, width: 200, height: 50 },
+                params: {
+                    text: 'Текст',
+                    color: textColorInput.value,
+                    fontSize: +textSizeInput.value
+                }
+            };
+            dragState = {
+                start: { x, y },
+                layer: activeLayer,
+                handle: 'create',
+                orig: { x, y, width: 200, height: 50 }
+            };
             layers.push(activeLayer);
             break;
     }
@@ -524,6 +585,17 @@ function render() {
             ctx.lineTo(x2 - arr * Math.cos(ang + Math.PI / 6), y2 - arr * Math.sin(ang + Math.PI / 6));
             ctx.stroke();
         }
+        if (l.type === 'text' && l.rect) {
+            ctx.save();
+            ctx.fillStyle = l.params.color;
+            ctx.font = `${l.params.fontSize}px Arial`;
+            ctx.textAlign = 'left';
+            ctx.textBaseline = 'top';
+            // ctx.fillText(l.params.text, l.rect.x, l.rect.y);
+            wrapText(ctx, l.params.text, l.rect.x, l.rect.y, l.rect.width, l.params.fontSize);
+
+            ctx.restore();
+        }
     });
 
     // Всегда показываем область кропа с затемнением, если такой слой есть
@@ -727,6 +799,27 @@ function saveImage() {
 
 function formatSize(value) {
     return Math.round(value * 10) / 10; // Округляем до 1 знака после запятой
+}
+
+function wrapText(context, text, x, y, maxWidth, fontSize) {
+    const words = text.split(' ');
+    let line = '';
+    let currentY = y;
+
+    for (let i = 0; i < words.length; i++) {
+        const testLine = line + words[i] + ' ';
+        const metrics = context.measureText(testLine);
+        const testWidth = metrics.width;
+
+        if (testWidth > maxWidth && i > 0) {
+            context.fillText(line, x, currentY);
+            line = words[i] + ' ';
+            currentY += fontSize * 1.2; // Интервал между строками
+        } else {
+            line = testLine;
+        }
+    }
+    context.fillText(line, x, currentY);
 }
 
 document.head.appendChild(style);

@@ -24,6 +24,9 @@
             <button id="lineBtn" title="Стрелка">
                 <img src="icons/ArrowUpRight.svg" alt="Стрелка" class="tool-icon">
             </button>
+            <button id="textBtn" title="Стрелка">
+                <img src="icons/TextCreation.svg" alt="Текст" class="tool-icon">
+            </button>
         </div>
 
         <div class="top-panel">
@@ -54,6 +57,16 @@
                             <option value="webp">WebP</option>
                         </select>
                     </label>
+
+                    <div id="textColorLabel" class="setting-label" style="display: none;">
+                        <label>Цвет текста:</label>
+                        <input type="color" id="textColor" value="#000000">
+                    </div>
+
+                    <div id="textSizeLabel" class="setting-label" style="display: none;">
+                        <label>Размер шрифта:</label>
+                        <input type="range" id="textSize" min="10" max="72" value="20">
+                    </div>
 
                     <label id="qualityLabel" style="display: none">
                         Качество:
