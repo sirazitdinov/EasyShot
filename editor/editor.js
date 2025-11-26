@@ -35,7 +35,6 @@ let layers = [];          // {type, rect, params}
 let originalImageData = null;
 
 
-
 /* ---------- ИНИЦИАЛИЗАЦИЯ ---------- */
 function init() {
     const fileBtn = document.getElementById('fileBtn');
@@ -104,11 +103,14 @@ function init() {
             layers = layers.filter(l => l !== activeLayer);
             activeLayer = null;
             render();
+            updateLayersList(); // Обновляем список слоев после удаления
         }
     });
 
-
     setToolsDisabled(true);
+
+    // Инициализация панели слоев
+    updateLayersList();
 }
 
 /* ---------- УТИЛИТЫ ---------- */
@@ -170,6 +172,7 @@ function adjustEditorSize() {
 function resetSelection() {
     activeLayer = null;
     render();
+    updateLayersList(); // Обновляем список слоев после сброса
 }
 
 function formatFileSize(bytes) {
@@ -180,6 +183,107 @@ function formatFileSize(bytes) {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 }
 
+// Функции для работы с панелью слоев
+function updateLayersList() {
+    const layersList = document.getElementById('layersList');
+    layersList.innerHTML = ''; // Очищаем текущий список
+
+    // Добавляем слой исходного изображения в самый низ (в конец списка)
+    const bgItem = document.createElement('div');
+    bgItem.className = 'layer-item';
+    bgItem.innerHTML = `
+        <div class="layer-icon">🖼️</div>
+        <div class="layer-name">Исходное изображение</div>
+    `;
+    layersList.appendChild(bgItem);
+
+    // Добавляем остальные слои в обратном порядке (последний слой сверху)
+    for (let i = layers.length - 1; i >= 0; i--) {
+        const layer = layers[i];
+        const item = document.createElement('div');
+        item.className = `layer-item ${activeLayer === layer ? 'active' : ''}`;
+        item.dataset.index = i; // Сохраняем индекс слоя для drag and drop
+
+        // Определяем иконку и имя слоя
+        let icon = '❓'; // Заглушка
+        let name = 'Неизвестный слой';
+        if (layer.type === 'crop') { icon = '✂️'; name = 'Кадрирование'; }
+        else if (layer.type === 'blur') { icon = '💧'; name = `Размытие (${layer.params?.radius || 5}px)`; }
+        else if (layer.type === 'highlight') { icon = '⬜'; name = `Выделение (${layer.params?.color || '#ff0000'})`; }
+        else if (layer.type === 'line') { icon = '↗️'; name = `Линия (${layer.points?.color || '#ff0000'})`; }
+        else if (layer.type === 'text') { icon = '📝'; name = `Текст: "${layer.params?.text?.substring(0, 10) || 'Пусто'}..."`; }
+
+        item.innerHTML = `
+            <div class="layer-icon">${icon}</div>
+            <div class="layer-name">${name}</div>
+            <div class="layer-drag-handle">⋮⋮</div>
+        `;
+
+        // Обработчик клика для выбора слоя
+        item.addEventListener('click', (e) => {
+            if (!e.target.classList.contains('layer-drag-handle')) { // Не реагировать на клик по ручке перетаскивания
+                activeLayer = layer;
+                render();
+                updateLayersList(); // Обновляем список, чтобы отметить активный слой
+            }
+        });
+
+        // Настройка drag and drop
+        item.draggable = true;
+        item.addEventListener('dragstart', (e) => {
+            e.dataTransfer.setData('text/plain', i); // Передаем индекс слоя
+            e.dataTransfer.effectAllowed = 'move';
+            setTimeout(() => item.classList.add('dragging'), 0); // Добавляем стиль во время перетаскивания
+        });
+
+        item.addEventListener('dragend', () => {
+            item.classList.remove('dragging');
+        });
+
+        layersList.appendChild(item);
+    }
+}
+
+// Обработчики событий для drag and drop
+document.addEventListener('dragover', (e) => {
+    e.preventDefault(); // Необходимо для срабатывания drop
+});
+
+document.addEventListener('drop', (e) => {
+    e.preventDefault();
+    const draggedIndex = parseInt(e.dataTransfer.getData('text/plain'));
+    const dropTarget = e.target.closest('.layer-item');
+
+    if (isNaN(draggedIndex) || !dropTarget || dropTarget.classList.contains('dragging')) {
+        return; // Проверяем валидность индекса и целевого элемента
+    }
+
+    const dropIndex = parseInt(dropTarget.dataset.index);
+    if (isNaN(dropIndex) || draggedIndex === dropIndex) {
+        return; // Проверяем валидность индекса и не перетаскиваем на себя
+    }
+
+    // Перемещаем слой в массиве
+    const [movedLayer] = layers.splice(draggedIndex, 1);
+    // Вычисляем новый индекс в массиве, учитывая обратный порядок отображения
+    // Слой с индексом 0 в массиве отображается внизу списка, слой с индексом length-1 - сверху
+    // При перемещении в UI слой с индексом 3 может быть "выше" слоя с индексом 4.
+    // Для корректного перемещения в массиве, нужно определить, куда именно его нужно вставить.
+    // Если dropIndex (в UI) больше, чем draggedIndex (в UI), значит, мы перемещаем элемент вверх по UI (в конец массива).
+    // Если dropIndex (в UI) меньше, чем draggedIndex (в UI), значит, мы перемещаем элемент вниз по UI (в начало массива).
+    // Но т.к. UI отображается в обратном порядке, логика инвертируется.
+    // Например, если мы перетаскиваем слой с индексом 1 (вверху UI) на позицию слоя с индексом 3 (внизу UI),
+    // то в массиве он должен переместиться из позиции 1 в позицию 3.
+    // И наоборот, если перетаскиваем слой с индексом 3 (внизу UI) на позицию слоя с индексом 1 (вверху UI),
+    // то в массиве он должен переместиться из позиции 3 в позицию 1.
+    // Это означает, что позиция вставки в массиве должна быть такой же, как dropIndex.
+    layers.splice(dropIndex, 0, movedLayer);
+
+    saveState(); // Сохраняем состояние после перемещения слоя
+    updateLayersList(); // Обновляем список
+    render(); // Перерисовываем холст
+});
+
 /* ---------- РАБОТА СО СЛОЯМИ ---------- */
 function startLayerCreation(type) {
     saveState(); // Сохраняем состояние перед созданием нового слоя
@@ -189,6 +293,7 @@ function startLayerCreation(type) {
         // Активируем существующий кроп для редактирования
         activeLayer = layers.find(l => l.type === 'crop');
         render();
+        updateLayersList(); // Обновляем список слоев
         return;
     }
 
@@ -263,6 +368,7 @@ function onMouseDown(e) {
             saveState();
             hit.params.text = newText;
             render();
+            updateLayersList(); // Обновляем список слоев после изменения текста
         }
         return;
     }
@@ -297,6 +403,7 @@ function onMouseDown(e) {
         activeLayer = hit;
         dragState = { start: { x, y }, layer: hit, handle: handleHit, orig: { ...hit.rect } };
         selectionOverlay.className = `resize-${handleHit}`;
+        updateLayersList(); // Обновляем список слоев после выбора слоя
         return;
     }
 
@@ -309,6 +416,7 @@ function onMouseDown(e) {
         };
         selectionOverlay.className = 'move';
         selectionOverlay.style.cursor = 'move';
+        updateLayersList(); // Обновляем список слоев после выбора слоя
         return;
     }
 
@@ -380,6 +488,7 @@ function onMouseDown(e) {
             layers.push(activeLayer);
             break;
     }
+    updateLayersList(); // Обновляем список слоев после создания нового
 }
 
 function onMouseMove(e) {
@@ -596,6 +705,16 @@ function render() {
 
             ctx.restore();
         }
+        if (l.type === 'text' && l.rect) {
+            ctx.save();
+            ctx.fillStyle = l.params.color;
+            ctx.font = `${l.params.fontSize}px Arial`;
+            ctx.textAlign = 'left';
+            ctx.textBaseline = 'top';
+            // Используем новую функцию wrapTextInRect, которая учитывает ширину и высоту области
+            wrapTextInRect(ctx, l.params.text, l.rect.x, l.rect.y, l.rect.width, l.rect.height, l.params.fontSize);
+            ctx.restore();
+        }
     });
 
     // Всегда показываем область кропа с затемнением, если такой слой есть
@@ -713,6 +832,10 @@ style.innerHTML = `
 .resize-e, .resize-sw, .resize-s, .resize-se {
     cursor: pointer !important;
 }
+.layer-item.dragging {
+    opacity: 0.5;
+    background-color: #555;
+}
 `;
 
 function saveImage() {
@@ -780,6 +903,17 @@ function saveImage() {
                 Math.min(layer.rect.height, height - layerY)
             );
         }
+        else if (layer.type === 'text') {
+            tempCtx.save();
+            tempCtx.fillStyle = layer.params.color;
+            tempCtx.font = `${layer.params.fontSize}px Arial`;
+            tempCtx.textAlign = 'left';
+            tempCtx.textBaseline = 'top';
+            const layerXInCrop = layer.rect.x - x;
+            const layerYInCrop = layer.rect.y - y;
+            wrapTextInRect(tempCtx, layer.params.text, layerXInCrop, layerYInCrop, layer.rect.width, layer.rect.height, layer.params.fontSize);
+            tempCtx.restore();
+        }
     });
 
     // Сохраняем изображение
@@ -801,6 +935,62 @@ function formatSize(value) {
     return Math.round(value * 10) / 10; // Округляем до 1 знака после запятой
 }
 
+function wrapTextInRect(context, text, x, y, maxWidth, maxHeight, fontSize) {
+    if (!text || maxWidth <= 0 || maxHeight <= 0) return; // Проверяем на валидность
+
+    const words = text.split(' ');
+    let line = '';
+    let currentY = y;
+    const lineHeight = fontSize * 1.2;
+
+    for (let i = 0; i < words.length; i++) {
+        const testLine = line + words[i] + ' ';
+        const metrics = context.measureText(testLine);
+        const testWidth = metrics.width;
+
+        // Проверяем, помещается ли строка по ширине
+        if (testWidth > maxWidth && i > 0) {
+            // Проверяем, помещается ли строка по высоте
+            if (currentY + lineHeight > y + maxHeight) {
+                // Если не помещается, рисуем многоточие в предыдущей строке
+                if (line.trim() !== '') {
+                    // Обрезаем строку, добавляем ...
+                    let truncatedLine = line.trim();
+                    let lastSpaceIndex = truncatedLine.lastIndexOf(' ');
+                    while (context.measureText(truncatedLine + '...').width > maxWidth && lastSpaceIndex > 0) {
+                         truncatedLine = truncatedLine.substring(0, lastSpaceIndex);
+                         lastSpaceIndex = truncatedLine.lastIndexOf(' ');
+                    }
+                    context.fillText(truncatedLine + '...', x, currentY);
+                }
+                return; // Выходим, если высота превышена
+            }
+            // Рисуем текущую строку
+            context.fillText(line, x, currentY);
+            // Начинаем новую строку
+            line = words[i] + ' ';
+            currentY += lineHeight;
+        } else {
+            line = testLine;
+        }
+    }
+
+    // Проверяем, помещается ли последняя строка по высоте
+    if (currentY + lineHeight <= y + maxHeight) {
+        context.fillText(line, x, currentY);
+    } else {
+        // Если последняя строка не помещается, обрезаем её
+        let truncatedLine = line.trim();
+        let lastSpaceIndex = truncatedLine.lastIndexOf(' ');
+        while (context.measureText(truncatedLine + '...').width > maxWidth && lastSpaceIndex > 0) {
+             truncatedLine = truncatedLine.substring(0, lastSpaceIndex);
+             lastSpaceIndex = truncatedLine.lastIndexOf(' ');
+        }
+        context.fillText(truncatedLine + '...', x, currentY);
+    }
+}
+
+// Старая функция wrapText остается для совместимости, если используется где-то еще
 function wrapText(context, text, x, y, maxWidth, fontSize) {
     const words = text.split(' ');
     let line = '';

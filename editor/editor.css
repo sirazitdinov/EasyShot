@@ -8,6 +8,8 @@
     --info-panel-color: #2d2d2d;
     --panel-color: #252526;
     --text-color: #e0e0e0;
+    --active-layer-bg: #3a5f8a; /* Цвет фона активного слоя */
+    --inactive-layer-bg: #3c3c3c; /* Цвет фона неактивного слоя */
 }
 
 body {
@@ -27,6 +29,7 @@ button {
     min-height: 600px;
     min-width: 800px;
     padding: 10px;
+    gap: 10px; /* Отступ между панелью инструментов и основным содержимым */
 }
 
 .toolbar {
@@ -80,6 +83,12 @@ button {
     width: 24px;
 }
 
+.main-content {
+    display: flex;
+    flex-grow: 1;
+    gap: 10px; /* Отступ между холстом и панелью слоев */
+}
+
 .top-panel {
     display: flex;
     flex-direction: column;
@@ -128,14 +137,13 @@ button {
     flex-grow: 1;
     justify-content: center;
     position: relative;
+    margin-bottom: 10px; /* Добавлен отступ снизу 26.11.2025 */
 }
 
 canvas {
     display: block;
     max-height: 100%;
     max-width: 100%;
-    /* width: 100%;
-    height: 100%; */
 }
 
 .info-panel {
@@ -144,7 +152,6 @@ canvas {
     display: flex;
     font-size: 13px;
     gap: 20px;
-    margin-top: 10px;
     padding: 8px 15px;
 }
 
@@ -235,4 +242,79 @@ input[type="color"] {
 }
 #selectionOverlay.resize-w {
     cursor: w-resize !important;
+}
+
+.layers-panel {
+    background-color: var(--panel-color);
+    border-radius: 5px;
+    display: flex;
+    flex-direction: column;
+    width: 200px; /* Фиксированная ширина панели слоев */
+    min-width: 200px; /* Гарантирует минимальную ширину */
+    max-width: 300px; /* Максимальная ширина */
+    overflow: hidden; /* Скрывает лишние элементы */
+}
+
+.layers-header {
+    padding: 5px 10px;
+    background-color: var(--bg-color);
+    font-size: 12px;
+    font-weight: bold;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.layers-list {
+    flex-grow: 1;
+    overflow-y: auto; /* Добавляет вертикальную прокрутку при необходимости */
+    padding: 5px 0;
+    display: flex;
+    flex-direction: column-reverse; /* Обратный порядок, чтобы последний слой был сверху */
+}
+
+.layer-item {
+    display: flex;
+    align-items: center;
+    padding: 5px 10px;
+    gap: 10px;
+    font-size: 12px;
+    cursor: pointer;
+    user-select: none;
+    border-bottom: 1px solid var(--border-color);
+    background-color: var(--inactive-layer-bg);
+    transition: background-color 0.2s;
+}
+
+.layer-item:last-child {
+    border-bottom: none;
+}
+
+.layer-item.active {
+    background-color: var(--active-layer-bg);
+}
+
+.layer-item:hover {
+    background-color: var(--button-hover);
+}
+
+.layer-icon {
+    width: 16px;
+    height: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+}
+
+.layer-name {
+    flex-grow: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.layer-drag-handle {
+    cursor: move;
+    padding: 2px;
+    color: #888;
+    font-size: 14px;
 }
