@@ -109,8 +109,22 @@ function init() {
 
     setToolsDisabled(true);
 
+    fetchVersionFromManifest();
+
     // Инициализация панели слоев
     updateLayersList();
+}
+
+async function fetchVersionFromManifest() {
+    try {
+        // Предполагается, что manifest.json находится в корне расширения
+        const response = await fetch(chrome.runtime.getURL('manifest.json'));
+        const manifest = await response.json();
+        document.getElementById('versionNumber').textContent = manifest.version || 'N/A';
+    } catch (error) {
+        console.error('Ошибка при загрузке версии из manifest.json:', error);
+        document.getElementById('versionNumber').textContent = 'N/A';
+    }
 }
 
 /* ---------- УТИЛИТЫ ---------- */

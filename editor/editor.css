@@ -243,6 +243,19 @@ input[type="color"] {
 #selectionOverlay.resize-w {
     cursor: w-resize !important;
 }
+.version-info {
+    margin-top: auto; /* Прижимает блок к низу панели */
+    padding: 5px 0;
+    font-size: 12px;
+    color: #888;
+    text-align: center;
+    width: 100%;
+}
+
+.version-info #versionNumber {
+    font-weight: bold;
+    color: #aaa;
+}
 
 .layers-panel {
     background-color: var(--panel-color);
