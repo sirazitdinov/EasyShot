@@ -17,7 +17,9 @@ body {
     color: var(--text-color);
     font-family: Arial, sans-serif;
     margin: 0;
-    padding: 0;
+    padding: 10px;
+    min-width: 300px; /* ✅ FIX: минимальная ширина окна */
+    min-height: 270px; /*  ✅ FIX: минимальная высота окна */
 }
 
 button {
@@ -26,10 +28,11 @@ button {
 
 .container {
     display: flex;
-    min-height: 600px;
-    min-width: 800px;
+    min-width: 850px;
+    height: calc(100vh - 20px);
     padding: 10px;
     gap: 10px; /* Отступ между панелью инструментов и основным содержимым */
+    box-sizing: border-box;
 }
 
 .toolbar {
@@ -42,6 +45,7 @@ button {
     margin-right: 10px;
     padding: 10px;
     width: 50px;
+    flex-shrink: 0; /* ✅ FIX: запрещаем сжатие */
 }
 
 .toolbar button {
@@ -89,21 +93,55 @@ button {
     gap: 10px; /* Отступ между холстом и панелью слоев */
 }
 
+.main-area {
+    flex-grow: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-width: 0; /* разрешаем сжиматься */
+    height: 100%;
+}
+
 .top-panel {
     display: flex;
     flex-direction: column;
     flex-grow: 1;
+    min-width: 0;
+    gap: 10px; /* Отступ между панелью настроек и основным содержимым */
+}
+
+#toolSettings {
+    display: none;
+    gap: 15px;
+    align-items: center;
+    min-width: 520px; /* с учеом всех инструментов */
+}
+
+.tool-settings-panel {
+    flex-shrink: 0;
+    min-width: 550px;
 }
 
 .tool-settings {
+    flex: 0 0 auto; /* Не растягивается, не сжимается */
+    display: flex;
     align-items: center;
     background-color: var(--panel-color);
     border-radius: 5px;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 10px;
-    margin-bottom: 10px;
     padding: 8px 15px;
+    gap: 10px;
+    /* overflow: hidden; Убираем прокрутку */
+    overflow: visible; /* Убираем прокрутку */
+    white-space: nowrap; /* Гарантирует, что все элементы в одну строку */
+    /* max-width: 100%; Ограничиваем ширину, если окно узкое */
+    max-width: none;
+}
+
+.tool-settings-content {
+    display: flex;
+    gap: 15px;
+    align-items: center;
+    min-width: 0; /* разрешаем внутреннему контенту сжиматься при нехватке места */
 }
 
 .tool-settings button {
@@ -129,24 +167,45 @@ button {
 }
 
 .editor-area {
-    align-items: center;
+    position: relative;
     background-color: #2d2d2d;
     border-radius: 5px;
     border: 1px solid var(--border-color);
     display: flex;
-    flex-grow: 1;
     justify-content: center;
+    align-items: center;
+    overflow: hidden;
+}
+
+.editor-and-info {
+    display: flex;
+    flex-direction: column;
+    flex-grow: 1;
+    min-width: 0;
+    gap: 10px; /* Отступ между холстом и информацией */
+}
+
+.canvas-wrapper {
     position: relative;
-    margin-bottom: 10px; /* Добавлен отступ снизу 26.11.2025 */
+    display: inline-block;
+    max-width: 100%;
+    max-height: 100%;
 }
 
 canvas {
     display: block;
-    max-height: 100%;
-    max-width: 100%;
+}
+
+.canvas-and-info {
+    display: flex;
+    flex-direction: column;
+    flex-grow: 1;
+    gap: 10px;
+    min-height: 0;
 }
 
 .info-panel {
+    flex: 0 0 auto; /* Не растягивается */
     background-color: var(--info-panel-color);
     border-radius: 5px;
     display: flex;
@@ -165,13 +224,15 @@ canvas {
 }
 
 #selectionOverlay {
-    display: none;
-    left: 0;
     position: absolute;
     top: 0;
-    transform: translateZ(0);
-    will-change: transform;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: auto; /* важно для событий мыши */
+    cursor: default;
     z-index: 10;
+    background: rgba(255,0,0,0.1);   /* Для отладки */
 }
 
 label {
@@ -213,36 +274,26 @@ input[type="color"] {
 }
 
 /* Стили для курсоров */
+#selectionOverlay.active {
+    cursor: crosshair;
+}
+
 #selectionOverlay.crop-mode {
     cursor: crosshair !important;
 }
 #selectionOverlay.move {
     cursor: move !important;
 }
-#selectionOverlay.resize-e {
-    cursor: e-resize !important;
-}
-#selectionOverlay.resize-n {
-    cursor: n-resize !important;
-}
-#selectionOverlay.resize-ne {
-    cursor: ne-resize !important;
-}
-#selectionOverlay.resize-nw {
-    cursor: nw-resize !important;
-}
-#selectionOverlay.resize-s {
-    cursor: s-resize !important;
-}
-#selectionOverlay.resize-se {
-    cursor: se-resize !important;
-}
-#selectionOverlay.resize-sw {
-    cursor: sw-resize !important;
-}
-#selectionOverlay.resize-w {
-    cursor: w-resize !important;
-}
+
+.resize-nw { cursor: nw-resize !important; }
+.resize-n { cursor: n-resize !important; }
+.resize-ne { cursor: ne-resize !important; }
+.resize-e { cursor: e-resize !important; }
+.resize-se { cursor: se-resize !important; }
+.resize-s { cursor: s-resize !important; }
+.resize-sw { cursor: sw-resize !important; }
+.resize-w { cursor: w-resize !important; }
+
 .version-info {
     margin-top: auto; /* Прижимает блок к низу панели */
     padding: 5px 0;
@@ -266,6 +317,7 @@ input[type="color"] {
     min-width: 200px; /* Гарантирует минимальную ширину */
     max-width: 300px; /* Максимальная ширина */
     overflow: hidden; /* Скрывает лишние элементы */
+    flex-shrink: 0; /* ✅ FIX: не сжимать */
 }
 
 .layers-header {
@@ -330,4 +382,23 @@ input[type="color"] {
     padding: 2px;
     color: #888;
     font-size: 14px;
+}
+
+.layers-list::before,
+.layers-list::after,
+.layer-item.insert-above,
+.layer-item.insert-below {
+    content: "";
+    display: block;
+    height: 4px;
+    background-color: var(--highlight-color);
+    margin: -2px 0;
+    border-radius: 2px;
+    opacity: 0;
+    transition: opacity 0.2s;
+}
+
+.layer-item.insert-above::before,
+.layer-item.insert-below::after {
+    opacity: 1 !important;
 }

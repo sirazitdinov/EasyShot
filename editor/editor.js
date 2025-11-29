@@ -62,20 +62,21 @@ function init() {
     });
 
     textColorInput.addEventListener('input', () => {
-    if (activeLayer?.type === 'text') {
-        saveState();
-        activeLayer.params.color = textColorInput.value;
-        render();
-        }
+        if (activeLayer?.type === 'text') {
+            saveState();
+            activeLayer.params.color = textColorInput.value;
+            render();
+            }
     });
 
     textSizeInput.addEventListener('input', () => {
-    if (activeLayer?.type === 'text') {
-        saveState();
-        activeLayer.params.fontSize = +textSizeInput.value;
-        render();
-    }
-});
+        document.getElementById('textSizeValue').textContent = textSizeInput.value;
+        if (activeLayer?.type === 'text') {
+            saveState();
+            activeLayer.params.fontSize = +textSizeInput.value;
+            render();
+        }
+    });
 
     fileInput.addEventListener('change', handleFileSelect);
 
@@ -141,6 +142,10 @@ async function handleFileSelect(e) {
     const file = e.target.files[0];
     if (!file) return;
     try {
+        // Сбрасываем активный инструмент и слой перед загрузкой нового изображения
+        resetEditorState();
+
+
         const url = await new Promise((res, rej) => {
             const r = new FileReader();
             r.onload = () => res(r.result);
@@ -151,6 +156,11 @@ async function handleFileSelect(e) {
         // Обновляем информацию о файле
         document.getElementById('fileSize').textContent = formatFileSize(file.size);
         await loadImage(url);
+
+        // Обновляем размеры selectionOverlay под новое изображение
+        selectionOverlay.style.width = `${canvas.width}px`;
+        selectionOverlay.style.height = `${canvas.height}px`;
+
         setToolsDisabled(false);
     } catch (err) { alert('Ошибка загрузки изображения'); }
 }
@@ -163,8 +173,17 @@ function loadImage(src) {
             canvas.height = image.naturalHeight / dpr;
             ctx.drawImage(image, 0, 0, image.naturalWidth, image.naturalHeight,
                 0, 0, canvas.width, canvas.height);
-            adjustEditorSize();
+            // adjustEditorSize();
+
+            // Cброс инлайн-размеров canvas в CSS-режим
+            canvas.style.width = '';
+            canvas.style.height = '';
+
             originalImageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+
+            // Обновляем размеры selectionOverlay сразу после изменения canvas
+            selectionOverlay.style.width = `${canvas.width}px`;
+            selectionOverlay.style.height = `${canvas.height}px`;
 
             // Обновляем информацию о размерах
             document.getElementById('imageWidth').textContent = `${canvas.width}px`;
@@ -178,15 +197,69 @@ function loadImage(src) {
 }
 
 function adjustEditorSize() {
-    const c = document.querySelector('.container');
-    c.style.width = `${canvas.width + 40}px`;
-    c.style.height = `${canvas.height + 100}px`;
+    // const c = document.querySelector('.container');
+    // c.style.width = `${canvas.width + 40}px`;
+    // c.style.height = `${canvas.height + 100}px`;
 }
 
 function resetSelection() {
+    // Сбрасываем только активный слой и инструмент, но НЕ трогаем другие слои
     activeLayer = null;
+    currentTool = null;
+    dragState = null;
+
+    // Снимаем активность со всех кнопок инструментов
+    document.querySelectorAll('.toolbar button').forEach(btn => {
+        btn.classList.remove('active');
+    });
+
+    // Скрываем панель настроек инструментов
+    toolSettings.style.display = 'none';
+
+    // Сбрасываем selectionOverlay
+    selectionOverlay.style.display = 'none'; // или 'block', но без размера — обновим дальше
+    selectionOverlay.className = '';
+    selectionOverlay.style.cursor = 'default';
+
     render();
     updateLayersList(); // Обновляем список слоев после сброса
+}
+
+function resetEditorState() {
+    // Сбрасываем все инструменты и состояние
+    currentTool = null;
+    activeLayer = null;
+    dragState = null;
+
+    // Очищаем историю и слои
+    historyStack = [];
+    layers = [];
+
+    // Обновляем UI
+    document.querySelectorAll('.toolbar button').forEach(btn => btn.classList.remove('active'));
+    toolSettings.style.display = 'none';
+    blurRadiusLabel.style.display = 'none';
+    highlightColorLabel.style.display = 'none';
+    textColorLabel.style.display = 'none';
+    textSizeLabel.style.display = 'none';
+    formatLabel.style.display = 'none';
+    qualityLabel.style.display = 'none';
+
+    // Скрываем и сбрасываем selectionOverlay
+    selectionOverlay.style.display = 'none';
+    selectionOverlay.className = '';
+    selectionOverlay.style.cursor = 'default';
+    selectionOverlay.style.left = '0';
+    selectionOverlay.style.top = '0';
+    selectionOverlay.style.width = '0';
+    selectionOverlay.style.height = '0';
+
+    // Очистка canvas (на всякий случай)
+    if (ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Обновляем UI-части
+    updateLayersList();
+    render();
 }
 
 function formatFileSize(bytes) {
@@ -401,7 +474,7 @@ function onMouseDown(e) {
             const centerY = hit.rect.y + hit.rect.height * (dy + 1) / 2;
 
             // Область попадания
-            const hitSize = HANDLE_SIZE;
+            const hitSize = 16; // HANDLE_SIZE
             const hitX = centerX - hitSize / 2;
             const hitY = centerY - hitSize / 2;
 
@@ -581,7 +654,7 @@ function onHover(e) {
             const centerY = l.rect.y + l.rect.height * (dy + 1) / 2;
 
             // Область попадания (увеличим для лучшего UX)
-            const hitSize = HANDLE_SIZE;
+            const hitSize = 16; // HANDLE_SIZE
             const hitX = centerX - hitSize / 2;
             const hitY = centerY - hitSize / 2;
 
@@ -842,13 +915,9 @@ function updateHighlightColor() { }
 /* ---------- ДОБАВЛЯЕМ CSS-ПОДСВЕТКУ ДЛЯ РУЧЕК ---------- */
 const style = document.createElement('style');
 style.innerHTML = `
-.resize-nw, .resize-n, .resize-ne, .resize-w,
-.resize-e, .resize-sw, .resize-s, .resize-se {
-    cursor: pointer !important;
-}
 .layer-item.dragging {
     opacity: 0.5;
-    background-color: #555;
+    background-color: #060505ff;
 }
 `;
 
