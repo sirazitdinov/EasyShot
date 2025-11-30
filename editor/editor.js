@@ -432,10 +432,9 @@ function onMouseDown(e) {
     const r = canvas.getBoundingClientRect();
     const x = (e.clientX - r.left) * (canvas.width / r.width);
     const y = (e.clientY - r.top) * (canvas.height / r.height);
-
-
-
     let hit = null;
+
+    // 1. Определяем попадание в слой
     for (const l of layers) {
         if (l.rect &&
             x >= l.rect.x && x <= l.rect.x + l.rect.width &&
@@ -447,7 +446,7 @@ function onMouseDown(e) {
         }
     }
 
-    // Проверка на двойной клик по текстовому слою
+    // 2. Проверка на двойной клик по текстовому слою
     if (e.detail === 2 && hit && hit.type === 'text') {
         e.preventDefault();
         const newText = prompt('Введите текст:', hit.params.text || '');
@@ -460,12 +459,14 @@ function onMouseDown(e) {
         return;
     }
 
-    /* проверка попадания в ручку */
+    // 3. Проверка попадания в ручку прямоугольного слоя
     let handleHit = null;
     if (hit?.rect) {
         for (const h of HANDLES) {
             const [dx, dy] = {
-                nw: [-1, -1], n: [0, -1], ne: [1, -1], w: [-1, 0], e: [1, 0],
+                nw: [-1, -1], n: [0, -1], ne: [1, -1],
+                w: [-1, 0],
+                e: [1, 0],
                 sw: [-1, 1], s: [0, 1], se: [1, 1]
             }[h];
 
@@ -486,6 +487,7 @@ function onMouseDown(e) {
         }
     }
 
+    // 4. Если попали в ручки - изменяем размер
     if (handleHit) {
         activeLayer = hit;
         dragState = { start: { x, y }, layer: hit, handle: handleHit, orig: { ...hit.rect } };
@@ -494,6 +496,34 @@ function onMouseDown(e) {
         return;
     }
 
+    // 5. Проверка попадания в начальную и конечную точку стрелки
+    if (hit?.type === 'line' && hit.points.x1) {
+        const d1 = Math.hypot(x - hit.points.x1, y - hit.points.y1);
+        const d2 = Math.hypot(x - hit.points.x2, y - hit.points.y2);
+
+        let specificHandle = null;
+        if(d1 < 10) {
+            specificHandle = 'x1';
+        } else if (d2 < 10) {
+            specificHandle = 'x2';
+        }
+
+        if (specificHandle) {
+            activeLayer = hit;
+            dragState = {
+                start: {x, y},
+                layer: hit,
+                handle: specificHandle,
+                orig: { ...hit.points}
+            };
+            selectionOverlay.className = '';
+            selectionOverlay.style.cursor = 'move';
+            updateLayersList();
+            return;
+        }
+    }
+
+    // 6. Проверка попадания в слой (и для прямоугольника и для линии)
     if (hit) {
         activeLayer = hit;
         const isRect = !!hit.rect;
@@ -507,13 +537,13 @@ function onMouseDown(e) {
         return;
     }
 
-    // Блокируем взаимодействие с другими инструментами при активном кропе
+    // 7. Блокируем взаимодействие с другими инструментами при активном кропе
     const cropLayer = layers.find(l => l.type === 'crop');
     if (currentTool !== 'crop' && cropLayer && hit?.type === 'crop') {
         return;
     }
 
-    /* создание нового слоя */
+    // 8. Cоздание нового слоя
     switch (currentTool) {
         case 'crop':
             // Если уже есть кроп - не создаем новый
@@ -618,8 +648,13 @@ function onMouseMove(e) {
         updateRectFromHandle(handle, layer, start, x, y);
     }
     else if (layer.points) {
-        layer.points.x2 = x;
-        layer.points.y2 = y;
+        if (handle === 'x1') {
+            layer.points.x1 = Math.max(0, Math.min(canvas.width, x));
+            layer.points.y1 = Math.max(0, Math.min(canvas.height, y));
+        } else if (handle === 'x2') {
+            layer.points.x2 = Math.max(0, Math.min(canvas.width, x));
+            layer.points.y2 = Math.max(0, Math.min(canvas.height, y));
+        }
     }
     render();
 }
@@ -841,9 +876,14 @@ function render() {
         );
     }
 
-    // Рендерим ручки активного слоя
+    // Рендерим ручки активного слоя (прямоугольные)
     if (activeLayer && activeLayer.rect) {
         drawHandles(ctx, activeLayer.rect);
+    }
+
+    // Рендерим маркеры точек для активной линии/стрелки
+    if (activeLayer && activeLayer.type === 'line' && activeLayer.points) {
+        drawLinePoints(ctx, activeLayer.points);
     }
 }
 
@@ -873,6 +913,23 @@ function drawHandles(ctx, rect) {
 
         ctx.fillRect(hx, hy, HANDLE_SIZE, HANDLE_SIZE);
     });
+    ctx.restore();
+}
+
+// Ручки для линии/стрелки
+function drawLinePoints(ctx, points) {
+    if (!ctx || !points) return;
+    ctx.save();
+    ctx.fillStyle = '#0096ff';
+    const radius = 6;
+    // Точка 1
+    ctx.beginPath();
+    ctx.arc(points.x1, points.y1, radius, 0, Math.PI * 2);
+    ctx.fill();
+    // Точка 2
+    ctx.beginPath();
+    ctx.arc(points.x2, points.y2, radius, 0, Math.PI * 2);
+    ctx.fill();
     ctx.restore();
 }
 
