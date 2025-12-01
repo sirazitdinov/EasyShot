@@ -158,8 +158,8 @@ async function handleFileSelect(e) {
         await loadImage(url);
 
         // Обновляем размеры selectionOverlay под новое изображение
-        selectionOverlay.style.width = `${canvas.width}px`;
-        selectionOverlay.style.height = `${canvas.height}px`;
+        selectionOverlay.style.width = `${canvas.clientWidth}px`;
+        selectionOverlay.style.height = `${canvas.clientHeight}px`;
 
         setToolsDisabled(false);
     } catch (err) { alert('Ошибка загрузки изображения'); }
@@ -169,21 +169,27 @@ function loadImage(src) {
     return new Promise(res => {
         image = new Image();
         image.onload = () => {
-            canvas.width = image.naturalWidth / dpr;
-            canvas.height = image.naturalHeight / dpr;
-            ctx.drawImage(image, 0, 0, image.naturalWidth, image.naturalHeight,
-                0, 0, canvas.width, canvas.height);
+
+            // Храним canvas в full-resolution (в пикселях источника)
+            canvas.width = image.naturalWidth;
+            canvas.height = image.naturalHeight;
+
+            // Рисуем изображение 1:1 (без масштабирования)
+            ctx.drawImage(image, 0, 0, image.naturalWidth, image.naturalHeight);
+
+            // Отображаем canvas на экране в CSS-пикселях (умножаем на 1/drp)
+            canvas.style.width = `${image.naturalWidth / dpr}px`
+            canvas.style.height = `${image.naturalHeight / dpr}px`
+
+            // ctx.drawImage(image, 0, 0, image.naturalWidth, image.naturalHeight,
+                // 0, 0, canvas.width, canvas.height);
             // adjustEditorSize();
 
-            // Cброс инлайн-размеров canvas в CSS-режим
-            canvas.style.width = '';
-            canvas.style.height = '';
+            // Обновляем размеры selectionOverlay сразу после изменения canvas
+            selectionOverlay.style.width = `${canvas.clientWidth}px`;
+            selectionOverlay.style.height = `${canvas.clientHeight}px`;
 
             originalImageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-
-            // Обновляем размеры selectionOverlay сразу после изменения canvas
-            selectionOverlay.style.width = `${canvas.width}px`;
-            selectionOverlay.style.height = `${canvas.height}px`;
 
             // Обновляем информацию о размерах
             document.getElementById('imageWidth').textContent = `${canvas.width}px`;
@@ -421,8 +427,8 @@ function startLayerCreation(type) {
     selectionOverlay.style.display = 'block';
     selectionOverlay.style.left = '0';
     selectionOverlay.style.top = '0';
-    selectionOverlay.style.width = `${canvas.width}px`;
-    selectionOverlay.style.height = `${canvas.height}px`;
+    selectionOverlay.style.width = `${canvas.clientWidth}px`;
+    selectionOverlay.style.height = `${canvas.clientHeight}px`;
     selectionOverlay.className = '';
     selectionOverlay.style.cursor = 'crosshair';
 }
@@ -793,7 +799,7 @@ function render() {
             ctx.save();
             ctx.filter = `blur(${l.params.radius}px)`;
             ctx.drawImage(image,
-                l.rect.x * dpr, l.rect.y * dpr, l.rect.width * dpr, l.rect.height * dpr,
+                l.rect.x, l.rect.y, l.rect.width, l.rect.height,
                 l.rect.x, l.rect.y, l.rect.width, l.rect.height);
             ctx.restore();
         }
@@ -981,84 +987,127 @@ style.innerHTML = `
 function saveImage() {
     if (!image) return;
 
+    // Определяем область кропа (если есть)
     const cropLayer = layers.find(l => l.type === 'crop');
-    let x = 0, y = 0, width = canvas.width, height = canvas.height;
+    let cropX = 0, cropY = 0, cropWidth = canvas.width, cropHeight = canvas.height;
 
     if (cropLayer) {
-        x = Math.max(0, Math.round(cropLayer.rect.x));
-        y = Math.max(0, Math.round(cropLayer.rect.y));
-        width = Math.min(Math.round(cropLayer.rect.width), canvas.width - x);
-        height = Math.min(Math.round(cropLayer.rect.height), canvas.height - y);
-
-        // Дополнительная проверка на минимальный размер
-        if (width <= 0 || height <= 0) {
-            width = canvas.width;
-            height = canvas.height;
+        cropX = Math.max(0, Math.round(cropLayer.rect.x));
+        cropY = Math.max(0, Math.round(cropLayer.rect.y));
+        cropWidth = Math.min(Math.round(cropLayer.rect.width), canvas.width - cropX);
+        cropHeight = Math.min(Math.round(cropLayer.rect.height), canvas.height - cropY);
+        if (cropWidth <= 0 || cropHeight <= 0) {
+            cropWidth = canvas.width;
+            cropHeight = canvas.height;
+            cropX = cropY = 0;
         }
     }
 
+    // Создаём временное полотно для результирующего изображения
     const tempCanvas = document.createElement('canvas');
-    tempCanvas.width = width;
-    tempCanvas.height = height;
+    tempCanvas.width = cropWidth;
+    tempCanvas.height = cropHeight;
     const tempCtx = tempCanvas.getContext('2d');
 
-    // Копируем основное изображение с учетом DPR
+    // 1. Рисуем основное изображение (без масштабирования, 1:1)
     tempCtx.drawImage(
         image,
-        x * dpr, y * dpr, width * dpr, height * dpr,
-        0, 0, width, height
+        cropX, cropY, cropWidth, cropHeight,
+        0, 0, cropWidth, cropHeight
     );
 
-    // Применяем эффекты (blur, highlight)
+    // 2. Применяем эффекты (blur, highlight, line, text)
     layers.filter(l => l.type !== 'crop').forEach(layer => {
-        if (!layer.rect) return;
+        // Для прямоугольных слоев проверяем попадание в область кропа
+        if (layer.rect) {
+            const layerX = layer.rect.x - cropX;
+            const layerY = layer.rect.y - cropY;
+            // Пропускаем слои вне области кропа
+            if (layerX + layer.rect.width < 0 || layerY + layer.rect.height < 0 ||
+                layerX > cropWidth || layerY > cropHeight) return;
 
-        const layerX = layer.rect.x - x;
-        const layerY = layer.rect.y - y;
+            if (layer.type === 'blur') {
+                tempCtx.save();
+                tempCtx.filter = `blur(${layer.params.radius}px)`;
+                // Источник — исходное изображение (без масштабирования)
+                const srcX = Math.max(0, layerX);
+                const srcY = Math.max(0, layerY);
+                const srcW = Math.min(layer.rect.width, image.naturalWidth - srcX);
+                const srcH = Math.min(layer.rect.height, image.naturalHeight - srcY);
 
-        // Пропускаем слои вне области кропа
-        if (layerX + layer.rect.width < 0 || layerY + layer.rect.height < 0 ||
-            layerX > width || layerY > height) return;
+                // Назначение — область внутри обрезанного холста (crop-space)
+                const dstX = Math.max(0, layerX);
+                const dstY = Math.max(0, layerY);
+                const dstW = Math.min(srcW, cropWidth - dstX);
+                const dstH = Math.min(srcH, cropHeight - dstY);
 
-        if (layer.type === 'blur') {
-            tempCtx.save();
-            tempCtx.filter = `blur(${layer.params.radius}px)`;
-            tempCtx.drawImage(
-                image,
-                layer.rect.x * dpr, layer.rect.y * dpr,
-                layer.rect.width * dpr, layer.rect.height * dpr,
-                Math.max(0, layerX), Math.max(0, layerY),
-                Math.min(layer.rect.width, width - layerX),
-                Math.min(layer.rect.height, height - layerY)
-            );
-            tempCtx.restore();
+                if (dstW > 0 && dstH > 0) {
+                    tempCtx.drawImage(
+                        image,
+                        srcX, srcY, srcW, srcH,
+                        dstX, dstY, dstW, dstH
+                    );
+                }
+                tempCtx.restore();
+            }
+            else if (layer.type === 'highlight') {
+                tempCtx.strokeStyle = layer.params.color;
+                tempCtx.lineWidth = 2;
+                tempCtx.strokeRect(
+                    Math.max(0, layerX),
+                    Math.max(0, layerY),
+                    Math.min(layer.rect.width, cropWidth - layerX),
+                    Math.min(layer.rect.height, cropHeight - layerY)
+                );
+            }
+            else if (layer.type === 'text') {
+                tempCtx.save();
+                tempCtx.fillStyle = layer.params.color;
+                tempCtx.font = `${layer.params.fontSize}px Arial`;
+                tempCtx.textAlign = 'left';
+                tempCtx.textBaseline = 'top';
+                wrapTextInRect(tempCtx, layer.params.text, layerX, layerY, layer.rect.width, layer.rect.height, layer.params.fontSize);
+                tempCtx.restore();
+            }
         }
-        else if (layer.type === 'highlight') {
-            tempCtx.strokeStyle = layer.params.color;
+        else if (layer.type === 'line' && layer.points) {
+            const x1 = layer.points.x1 - cropX;
+            const y1 = layer.points.y1 - cropY;
+            const x2 = layer.points.x2 - cropX;
+            const y2 = layer.points.y2 - cropY;
+
+            // Проверяем, пересекается ли линия с областью кропа
+            if ((x1 < 0 && x2 < 0) || (x1 > cropWidth && x2 > cropWidth) ||
+                (y1 < 0 && y2 < 0) || (y1 > cropHeight && y2 > cropHeight)) {
+                return;
+            }
+
+            tempCtx.strokeStyle = layer.points.color;
             tempCtx.lineWidth = 2;
-            tempCtx.strokeRect(
-                Math.max(0, layerX),
-                Math.max(0, layerY),
-                Math.min(layer.rect.width, width - layerX),
-                Math.min(layer.rect.height, height - layerY)
+            tempCtx.beginPath();
+            tempCtx.moveTo(x1, y1);
+            tempCtx.lineTo(x2, y2);
+
+            // Рисуем стрелку на конце
+            const angle = Math.atan2(y2 - y1, x2 - x1);
+            const arrowLength = 10;
+            tempCtx.lineTo(
+                x2 - arrowLength * Math.cos(angle - Math.PI / 6),
+                y2 - arrowLength * Math.sin(angle - Math.PI / 6)
             );
-        }
-        else if (layer.type === 'text') {
-            tempCtx.save();
-            tempCtx.fillStyle = layer.params.color;
-            tempCtx.font = `${layer.params.fontSize}px Arial`;
-            tempCtx.textAlign = 'left';
-            tempCtx.textBaseline = 'top';
-            const layerXInCrop = layer.rect.x - x;
-            const layerYInCrop = layer.rect.y - y;
-            wrapTextInRect(tempCtx, layer.params.text, layerXInCrop, layerYInCrop, layer.rect.width, layer.rect.height, layer.params.fontSize);
-            tempCtx.restore();
+            tempCtx.moveTo(x2, y2);
+            tempCtx.lineTo(
+                x2 - arrowLength * Math.cos(angle + Math.PI / 6),
+                y2 - arrowLength * Math.sin(angle + Math.PI / 6)
+            );
+
+            tempCtx.stroke();
         }
     });
 
-    // Сохраняем изображение
+    // 3. Сохраняем изображение
     const format = formatSelect.value;
-    const quality = parseFloat(qualityRange.value);
+    const quality = format === 'png' ? undefined : parseFloat(qualityRange.value);
 
     tempCanvas.toBlob(blob => {
         const url = URL.createObjectURL(blob);
