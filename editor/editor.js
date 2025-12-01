@@ -1027,27 +1027,49 @@ function saveImage() {
                 layerX > cropWidth || layerY > cropHeight) return;
 
             if (layer.type === 'blur') {
+
+                // смещённые координаты относительно кропа
+                const shiftedX = layer.rect.x - cropX;
+                const shiftedY = layer.rect.y - cropY;
+                const shiftedR = shiftedX + layer.rect.width;
+                const shiftedB = shiftedY + layer.rect.height;
+
+                // Границы кроп-области
+                const cropLeft = 0, cropTop = 0, cropRight = cropWidth, cropBottom = cropHeight;
+
+                // Находим пересечение (видимую часть)
+                const visibleLeft = Math.max(cropLeft, shiftedX);
+                const visibleTop = Math.max(cropTop, shiftedY);
+                const visibleRight = Math.min(cropRight, shiftedR);
+                const visibleBottom = Math.min(cropBottom, shiftedB);
+                const visibleWidth = visibleRight - visibleLeft;
+                const visibleHeight = visibleBottom - visibleTop;
+
+                // Пропускаем, если пересечения нет
+                if (visibleWidth <= 0 || visibleHeight <= 0) return;
+
                 tempCtx.save();
                 tempCtx.filter = `blur(${layer.params.radius}px)`;
-                // Источник — исходное изображение (без масштабирования)
-                const srcX = Math.max(0, layerX);
-                const srcY = Math.max(0, layerY);
-                const srcW = Math.min(layer.rect.width, image.naturalWidth - srcX);
-                const srcH = Math.min(layer.rect.height, image.naturalHeight - srcY);
+                tempCtx.beginPath();
+                tempCtx.rect(0, 0, cropWidth, cropHeight);
+                tempCtx.clip();
 
-                // Назначение — область внутри обрезанного холста (crop-space)
-                const dstX = Math.max(0, layerX);
-                const dstY = Math.max(0, layerY);
-                const dstW = Math.min(srcW, cropWidth - dstX);
-                const dstH = Math.min(srcH, cropHeight - dstY);
+                // Источник: смещённые координаты НА ИСХОДНОМ ИЗОБРАЖЕНИИ — layer.rect.x, layer.rect.y!
+                const srcX = layer.rect.x + (visibleLeft - shiftedX); // = layer.rect.x + отступ от левого края пересечения
+                const srcY = layer.rect.y + (visibleTop - shiftedY);
+                // Размеры источника = размерам пересечения (1:1, без масштаба)
+                const srcW = visibleWidth;
+                const srcH = visibleHeight;
 
-                if (dstW > 0 && dstH > 0) {
-                    tempCtx.drawImage(
-                        image,
-                        srcX, srcY, srcW, srcH,
-                        dstX, dstY, dstW, dstH
-                    );
-                }
+                // Назначение: видимая часть внутри кропа
+                const dstX = visibleLeft;
+                const dstY = visibleTop;
+
+                tempCtx.drawImage(
+                    image,
+                    srcX, srcY, srcW, srcH,
+                    dstX, dstY, srcW, srcH
+                );
                 tempCtx.restore();
             }
             else if (layer.type === 'highlight') {
