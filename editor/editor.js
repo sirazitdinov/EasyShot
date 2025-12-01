@@ -1051,14 +1051,40 @@ function saveImage() {
                 tempCtx.restore();
             }
             else if (layer.type === 'highlight') {
+
+                // Задаем цвет и толщину линий
                 tempCtx.strokeStyle = layer.params.color;
                 tempCtx.lineWidth = 2;
-                tempCtx.strokeRect(
-                    Math.max(0, layerX),
-                    Math.max(0, layerY),
-                    Math.min(layer.rect.width, cropWidth - layerX),
-                    Math.min(layer.rect.height, cropHeight - layerY)
-                );
+
+                // смещённые координаты относительно кропа
+                const shiftedX = layer.rect.x - cropX;
+                const shiftedY = layer.rect.y - cropY;
+                const shiftedR = shiftedX + layer.rect.width;
+                const shiftedB = shiftedY + layer.rect.height;
+
+                // Границы кроп-области
+                const cropLeft = 0, cropTop = 0, cropRight = cropWidth, cropBottom = cropHeight;
+
+                // Находим пересечение (видимую часть)
+                const visibleLeft = Math.max(cropLeft, shiftedX);
+                const visibleTop = Math.max(cropTop, shiftedY);
+                const visibleRight = Math.min(cropRight, shiftedR);
+                const visibleBottom =  Math.min(cropBottom, shiftedB);
+
+                const visibleWidth = visibleRight - visibleLeft;
+                const visibleHeight = visibleBottom - visibleTop;
+
+                // Пропускаем, если пересечения нет
+                if (visibleWidth <= 0 || visibleHeight <= 0) return;
+
+                tempCtx.save();
+                tempCtx.beginPath();
+                tempCtx.rect(0, 0, cropWidth, cropHeight); // clip к области кропа
+                tempCtx.clip();
+
+                // Рисуем видимую часть контура внутри кропа
+                tempCtx.strokeRect(shiftedX, shiftedY, layer.rect.width, layer.rect.height);
+                tempCtx.restore();
             }
             else if (layer.type === 'text') {
                 tempCtx.save();
