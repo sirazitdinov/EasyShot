@@ -145,7 +145,6 @@ async function handleFileSelect(e) {
         // Сбрасываем активный инструмент и слой перед загрузкой нового изображения
         resetEditorState();
 
-
         const url = await new Promise((res, rej) => {
             const r = new FileReader();
             r.onload = () => res(r.result);
@@ -167,7 +166,7 @@ async function handleFileSelect(e) {
 
 function loadImage(src) {
     return new Promise(res => {
-        image = new Image();
+        const image = new Image();
         image.onload = () => {
 
             // Храним canvas в full-resolution (в пикселях источника)
@@ -687,7 +686,9 @@ function onHover(e) {
 
         for (const h of HANDLES) {
             const [dx, dy] = {
-                nw: [-1, -1], n: [0, -1], ne: [1, -1], w: [-1, 0], e: [1, 0], sw: [-1, 1], s: [0, 1], se: [1, 1]
+                nw: [-1, -1], n: [0, -1], ne: [1, -1],
+                w: [-1, 0], e: [1, 0],
+                sw: [-1, 1], s: [0, 1], se: [1, 1]
             }[h];
 
             // Координаты центра ручки

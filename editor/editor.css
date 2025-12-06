@@ -280,8 +280,12 @@ input[type="color"] {
     cursor: crosshair;
 }
 
-#selectionOverlay.crop-mode {
+#selectionOverlay.crop-mode,
+#selectionOverlay.blur-mode,
+#selectionOverlay.highlight-mode {
     cursor: crosshair !important;
+    border: 'none';
+    pointer-events: auto;
 }
 #selectionOverlay.move {
     cursor: move !important;
