@@ -7,14 +7,62 @@ export default class LineTool extends BaseTool {
             name: 'line',
             settingsIds: ['highlightColorLabel']
         });
-        this.color = '#ff0000';
+        // this.color = '#ff0000';
+        this.settings = {
+            color: '#ff0000',
+            thickness: 2,
+            opacity: 1.0
+        };
+
         this.supportsCreation = true;
     }
 
     activate() {
         super.activate();
-        const colorInput = document.getElementById('highlightColor');
-        if (colorInput) this.color = colorInput.value;
+        // const colorInput = document.getElementById('highlightColor');
+        // if (colorInput) this.color = colorInput.value;
+    }
+
+    deactivate() {
+        super.deactivate();
+        // this.overlay.classList.remove('highlight-mode');
+        this.editor.updateToolbarButtons();
+    }
+
+    getUISettingsConfig() {
+        return {
+            fields: [
+                {
+                    key: 'color',
+                    type: 'color',
+                    label: 'Цвет линии',
+                    value: this.settings.color,
+                    onChange: (value) => this.updateSetting('color', value)
+                },
+                {
+                    key: 'thickness',
+                    type: 'range',
+                    label: 'Толщина',
+                    min: 1,
+                    max: 10,
+                    value: this.settings.thickness,
+                    onChange: (value) => this.updateSetting('thickness', value)
+                },
+            ]
+        };
+    }
+
+    // Метод для обновления настроек (вызывается из UI)
+    updateSetting(key, value) {
+        if (this.validateSetting(key, value)) {
+            this.settings[key] = value;
+            this.notifyObservers(); // Уведомить о изменении (Observer pattern)
+        }
+    }
+
+    // Валидация (например, толщина должна быть положительной)
+    validateSetting(key, value) {
+        // Логика валидации
     }
 
     setupOverlay() {
@@ -32,44 +80,44 @@ export default class LineTool extends BaseTool {
         this.linePreview = this.overlay.querySelector('#linePreview');
     }
 
-    handleMouseDown(event) {
-        if (!this.isActive) return;
-        const coords = this.getCanvasCoords(event);
-        this.startPoint = { x: coords.x, y: coords.y };
-        this.currentLayer = {
-            type: 'line',
-            points: { x1: coords.x, y1: coords.y, x2: coords.x, y2: coords.y, color: this.color }
-        };
-        this.isDrawing = true;
-        this.editor.addHistoryState();
-    }
+    // handleMouseDown(event) {
+    //     if (!this.isActive) return;
+    //     const coords = this.getCanvasCoords(event);
+    //     this.startPoint = { x: coords.x, y: coords.y };
+    //     this.currentLayer = {
+    //         type: 'line',
+    //         points: { x1: coords.x, y1: coords.y, x2: coords.x, y2: coords.y, color: this.color }
+    //     };
+    //     this.isDrawing = true;
+    //     this.editor.addHistoryState();
+    // }
 
-    handleMouseMove(event) {
-        if (!this.isActive || !this.isDrawing) return;
-        const coords = this.getCanvasCoords(event);
-        this.currentLayer.points.x2 = coords.x;
-        this.currentLayer.points.y2 = coords.y;
-        this.updateOverlay();
-    }
+    // handleMouseMove(event) {
+    //     if (!this.isActive || !this.isDrawing) return;
+    //     const coords = this.getCanvasCoords(event);
+    //     this.currentLayer.points.x2 = coords.x;
+    //     this.currentLayer.points.y2 = coords.y;
+    //     this.updateOverlay();
+    // }
 
-    handleMouseUp(event) {
-        if (!this.isActive || !this.isDrawing) return;
-        this.isDrawing = false;
+    // handleMouseUp(event) {
+    //     if (!this.isActive || !this.isDrawing) return;
+    //     this.isDrawing = false;
 
-        const dx = this.currentLayer.points.x2 - this.currentLayer.points.x1;
-        const dy = this.currentLayer.points.y2 - this.currentLayer.points.y1;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        if (dist < 10) {
-            this.cancelOperation();
-            return;
-        }
+    //     const dx = this.currentLayer.points.x2 - this.currentLayer.points.x1;
+    //     const dy = this.currentLayer.points.y2 - this.currentLayer.points.y1;
+    //     const dist = Math.sqrt(dx * dx + dy * dy);
+    //     if (dist < 10) {
+    //         this.cancelOperation();
+    //         return;
+    //     }
 
-        this.editor.addLayer(this.currentLayer);
-        this.editor.setActiveLayer(this.currentLayer);
+    //     this.editor.addLayer(this.currentLayer);
+    //     this.editor.setActiveLayer(this.currentLayer);
 
-        this.cleanupOverlay();
-        this.setupOverlay();
-    }
+    //     this.cleanupOverlay();
+    //     this.setupOverlay();
+    // }
 
     updateOverlay() {
         if (!this.linePreview || !this.currentLayer?.points) return;
@@ -94,23 +142,33 @@ export default class LineTool extends BaseTool {
         this.linePreview = null;
     }
 
-    updateSettingsUI() {
-        const colorInput = document.getElementById('highlightColor');
-        if (!colorInput) return;
+    /**
+     * Обновляет настройку инструмента и применяет её к активному слою, если он текстовый
+     * @param {string} key — имя параметра ('textColor', 'textSize')
+     * @param {string|number} value — новое значение
+     */
+    updateSetting(key, value) {
+        switch (key) {
+            case 'color':
+                this.settings.color = value;
+                break;
+            case 'thickness':
+                this.settings.fontSize = value;
+                break;
+            default:
+                console.warn(`LineTool.updateSetting: unknown setting key "${key}"`);
+                return;
+        }
 
-        this.color = colorInput.value;
-
-        const onChange = () => {
-            this.color = colorInput.value;
-            if (this.linePreview) this.linePreview.style.borderColor = this.color;
-            const active = this.editor.getActiveLayer();
-            if (active?.type === 'line') {
-                active.points.color = this.color;
-                this.editor.render();
+        // Применяем настройку к активному текстовому слою, если есть
+        const activeLayer = this.editor.getActiveLayer();
+        if (activeLayer?.type === 'line') {
+            if (key === 'color') {
+                activeLayer.params.color = value;
+            } else if (key === 'thickness') {
+                activeLayer.params.thickness = value;
             }
-        };
-
-        colorInput.removeEventListener('input', onChange);
-        colorInput.addEventListener('input', onChange);
+            this.editor.render(); // перерисовываем
+        }
     }
 }

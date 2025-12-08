@@ -7,7 +7,11 @@ export default class BlurTool extends BaseTool {
             name: 'blur',
             settingsIds: ['blurRadiusLabel']
         });
-        this.radius = 5;
+
+        this.settings = {
+            radius: 6
+        }
+
         this.supportsCreation = true;
     }
 
@@ -21,7 +25,23 @@ export default class BlurTool extends BaseTool {
     deactivate() {
         super.deactivate();
         this.overlay.classList.remove('blur-mode');
-        this.editor.updateToolbarButtons(this.name);
+        this.editor.updateToolbarButtons();
+    }
+
+    getUISettingsConfig() {
+        return {
+            fields: [
+                {
+                    key: 'radius',
+                    type: 'range',
+                    label: 'Радиус',
+                    min: 1,
+                    max: 20,
+                    value: this.settings.radius,
+                    onChange: (value) => this.updateSetting('radius', value)
+                },
+            ]
+        };
     }
 
     setupOverlay() {
@@ -32,45 +52,6 @@ export default class BlurTool extends BaseTool {
         // this.overlay.style.pointerEvents = 'auto'; // Важно для получения событий
     }
 
-    handleMouseDown(event) {
-        if (!this.isActive) return;
-        const coords = this.getCanvasCoords(event);
-        this.startPoint = { x: coords.x, y: coords.y };
-        this.currentLayer = {
-            type: 'blur',
-            rect: { x: coords.x, y: coords.y, width: 0, height: 0 },
-            params: { radius: this.radius }
-        };
-        this.isDrawing = true;
-        this.editor.addHistoryState();
-    }
-
-    handleMouseMove(event) {
-        if (!this.isActive || !this.isDrawing) return;
-        const coords = this.getCanvasCoords(event);
-        const x = Math.min(this.startPoint.x, coords.x);
-        const y = Math.min(this.startPoint.y, coords.y);
-        const width = Math.abs(coords.x - this.startPoint.x);
-        const height = Math.abs(coords.y - this.startPoint.y);
-        this.currentLayer.rect = { x, y, width, height };
-        this.updateOverlay();
-    }
-
-    handleMouseUp(event) {
-        if (!this.isActive || !this.isDrawing) return;
-        this.isDrawing = false;
-
-        if (this.currentLayer.rect.width < 10 || this.currentLayer.rect.height < 10) {
-            this.cancelOperation();
-            return;
-        }
-
-        this.editor.addLayer(this.currentLayer);
-        this.editor.setActiveLayer(this.currentLayer);
-
-        this.cleanupOverlay();
-        this.setupOverlay();
-    }
 
     updateOverlay() {
         if (!this.currentLayer?.rect) return;
@@ -89,22 +70,29 @@ export default class BlurTool extends BaseTool {
         this.currentLayer = null;
     }
 
-    updateSettingsUI() {
-        const radiusInput = document.getElementById('blurRadius');
-        if (!radiusInput) return;
+    /**
+     * Обновляет настройку инструмента и применяет её к активному слою, если он текстовый
+     * @param {string} key — имя параметра ('textColor', 'textSize')
+     * @param {string|number} value — новое значение
+     */
+    updateSetting(key, value) {
+        switch (key) {
+            case 'radius':
+                this.settings.radius = value;
+                break;
+            default:
+                console.warn(`BlurTool.updateSetting: unknown setting key "${key}"`);
+                return;
+        }
 
-        this.radius = +radiusInput.value;
-
-        const onChange = () => {
-            this.radius = +radiusInput.value;
-            const active = this.editor.getActiveLayer();
-            if (active?.type === 'blur') {
-                active.params.radius = this.radius;
-                this.editor.render();
+        // Применяем настройку к активному текстовому слою, если есть
+        const activeLayer = this.editor.getActiveLayer();
+        if (activeLayer?.type === 'blur') {
+            if (key === 'radius') {
+                activeLayer.params.radius = value;
             }
-        };
-
-        radiusInput.removeEventListener('input', onChange);
-        radiusInput.addEventListener('input', onChange);
+            this.editor.render(); // перерисовываем
+        }
     }
+
 }

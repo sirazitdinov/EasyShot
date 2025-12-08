@@ -5,6 +5,7 @@ import BlurTool from './Tools/BlurTool.js';
 import HighlightTool from './Tools/HighlightTool.js';
 import LineTool from './Tools/LineTool.js';
 import TextTool from './Tools/TextTool.js';
+import ToolSettingsUI from './Tools/ToolSettingsUI.js';
 import Helper from './Helper.js';
 
 export default class ImageEditor {
@@ -39,15 +40,16 @@ export default class ImageEditor {
         this.history = [];
         this.historyPosition = -1;
 
+
+        // Контейнер для вывода настроек инструментов
+        this.toolSettingsUI = new ToolSettingsUI(document.getElementById('toolSettings'));
+
         // Хранилище настроек инструментов
         this.toolSettings = {
             // Настройки по умолчанию для каждого инструмента
-            highlight: {
-                color:'#ff0000',
-                thinknes: 2
-            },
+            highlight: {color:'#ff0000', thinknes: 2},
             crop: {aspectRatio: 'free'},
-            line: {color:'#ff0000'},
+            line: {color:'#ff0000', thickness: 2},
             blur: {radius: 5}
         }
 
@@ -55,7 +57,8 @@ export default class ImageEditor {
         this.settingsElements = {
             highlight: {
                 colorInput: document.getElementById('highlightColor'),
-                colorLabel: document.getElementById('highlightColorLabel')
+                colorLabel: document.getElementById('highlightColorLabel'),
+                thicknessInput: document.getElementById('thickness')
             },
             crop: {},
             blur: {
@@ -68,6 +71,12 @@ export default class ImageEditor {
                 colorLabel: document.getElementById('textColorLabel'),
                 sizeInput: document.getElementById('textSize'),
                 sizeLabel: document.getElementById('textSizeLabel')
+            },
+            general: {
+                formatSelect: document.getElementById('formatSelect'),
+                qualityLabel: document.getElementById('qualityLabel'),
+                qualityRange: document.getElementById('qualityRange'),
+                qualityValue: document.getElementById('qualityValue')
             }
         }
 
@@ -121,12 +130,12 @@ export default class ImageEditor {
     }
 
     setActiveTool(tool) {
+        // Деактивируем предыдущий активный инструмент и прослущивание событий
         if (this.activeTool) {
             this.selectionOverlay.style.pointerEvents = 'auto';
             this.selectionOverlay.removeEventListener('mousedown', this.boundToolMouseDown);
             this.selectionOverlay.removeEventListener('mousemove', this.boundToolMouseMove);
             this.selectionOverlay.removeEventListener('mouseup', this.boundToolMouseUp);
-
             this.activeTool.deactivate();
         }
 
@@ -134,10 +143,16 @@ export default class ImageEditor {
 
         if (tool) {
             tool.activate();
+            // Отрисовываем элементы настроек активного инстурмента
+            this.toolSettingsUI.renderSettings(tool);
+            this.updateToolbarButtons();
+        } else {
+            this.updateToolbarButtons();
         }
     }
 
-    updateToolbarButtons(activeToolType) {
+    updateToolbarButtons() {
+        const activeToolType = this.activeTool?.name;
         // Обновление состояния кнопок в тулбаре
         Object.keys(this.tools).forEach(toolType => {
             const button = document.getElementById(`${toolType}Btn`);
@@ -371,24 +386,44 @@ export default class ImageEditor {
         return this.toolSettings[toolName] || {};
     }
 
-    // Обновление настроек инструмента TODO
-    updateToolSettings(toolName, settings) {
-        if (!this.toolSettings[toolName]) {
-            this.toolSettings[toolName] = {};
+    showToolSettings(tool) {
+        const toolSettingsContainer = document.getElementById('toolSettings');
+        if (!toolSettingsContainer) return;
+
+        // Скрываем панель настроек инструментов
+        toolSettingsContainer.style.display = 'flex';
+
+        // Скрыть все label'ы и элементы настроек по умолчанию
+        const allLabels = toolSettingsContainer.querySelectorAll('[id$="Label"]');
+        allLabels.forEach(el => el.style.display = 'none');
+
+        const allInputs = toolSettingsContainer.querySelectorAll('input, select');
+        allInputs.forEach(el => el.style.display = 'none');
+
+        if (!tool) {
+            // Нет активного инструмента — скрыть весь блок
+            toolSettingsContainer.style.display = 'none';
+            return;
         }
 
-        // Глубокое слияние настроек
-        this.toolSettings[toolName] = {
-            ...this.toolSettings[toolName],
-            ...settings
-        };
+        // Получить от инструмента, что показывать
+        // const toolSettings = tool.getSettings();
 
-        // Сохранение настроек пользователя
-        this.saveUserSettings();
+        // Показать запрошенные элементы
+        // toolSettings.visibleElements.forEach(id => {
+        //     const el = document.getElementById(id);
+        //     if (el) el.style.display = 'block';
+        // });
 
-        // Уведомление активного инструмента об изменении настроек
-        if (this.activeTool && this.activeTool.name === toolName) {
-            this.activeTool.updateSettings(this.toolSettings[toolName]);
+
+        // Применить текущие значения настроек (если переданы)
+        if (toolSettings.settingsValues) {
+            for (const [id, value] of Object.entries(toolSettings.settingsValues)) {
+                const el = document.getElementById(id);
+                if (el && el.value !== undefined) {
+                    el.value = value;
+                }
+            }
         }
     }
 
@@ -575,13 +610,13 @@ export default class ImageEditor {
             }
             if (l.type === 'highlight' && l.rect) {
                 this.context.strokeStyle = l.params.color;
-                this.context.lineWidth = this.LINE_WIDTH;
+                this.context.lineWidth = l.params.thickness || this.LINE_WIDTH;
                 this.context.strokeRect(l.rect.x, l.rect.y, l.rect.width, l.rect.height);
             }
             if (l.type === 'line' && l.points) {
                 const { x1, y1, x2, y2, color } = l.points;
                 this.context.strokeStyle = color;
-                this.context.lineWidth = 2;
+                this.context.lineWidth = l.params.thickness || 2;
                 this.context.beginPath();
                 this.context.moveTo(x1, y1);
                 this.context.lineTo(x2, y2);
@@ -842,13 +877,14 @@ export default class ImageEditor {
                     newLayer = {
                         type: 'highlight',
                         rect: { x: coords.x, y: coords.y, width: 0, height: 0 },
-                        params: { color: this.activeTool.color }
+                        params: { color: this.activeTool.color, thickness: this.activeTool.thickness }
                     };
                     break;
                 case 'line':
                     newLayer = {
                         type: 'line',
-                        points: { x1: coords.x, y1: coords.y, x2: coords.x, y2: coords.y, color: '#ff0000' }
+                        points: { x1: coords.x, y1: coords.y, x2: coords.x, y2: coords.y, color: '#ff0000' },
+                        params: { color: this.activeTool.color, thickness: this.activeTool.thickness }
                     };
                     break;
                 case 'text':

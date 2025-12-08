@@ -12,6 +12,18 @@ export default class CropTool extends BaseTool {
         this.overlay.classList.add('crop-mode');
     }
 
+    deactivate() {
+        super.deactivate();
+        // this.overlay.classList.remove('highlight-mode');
+        this.editor.updateToolbarButtons();
+    }
+
+    getUISettingsConfig() {
+        return {
+            fields: []
+        };
+    }
+
     setupOverlay() {
         super.setupOverlay();
         this.overlay.style.cursor = 'crosshair';

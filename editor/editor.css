@@ -7,6 +7,7 @@
     --highlight-color: #007acc;
     --info-panel-color: #2d2d2d;
     --panel-color: #252526;
+    --text-info-panel: #a0a0a0;
     --text-color: #e0e0e0;
     --active-layer-bg: #3a5f8a; /* Цвет фона активного слоя */
     --inactive-layer-bg: #3c3c3c; /* Цвет фона неактивного слоя */
@@ -108,6 +109,37 @@ button {
     flex-grow: 1;
     min-width: 0;
     gap: 10px; /* Отступ между панелью настроек и основным содержимым */
+}
+
+.setting-container {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.setting-container label {
+    margin: 0;
+    font-size: 12px;
+    color: var(--text-color);
+}
+
+.setting-container input[type="range"] {
+    width: 80px;
+}
+
+.setting-container input[type="color"] {
+    width: 30px;
+    height: 30px;
+    padding: 0;
+}
+
+.setting-container .range-value {
+    min-width: 24px;
+    text-align: center;
+    font-size: 14px;
+    color: var(--text-color);
 }
 
 #toolSettings {
@@ -220,7 +252,7 @@ canvas {
 }
 
 .info-panel span:first-child {
-    color: #a0a0a0;
+    color: var(--text-info-panel);
 }
 
 #selectionOverlay {
@@ -304,14 +336,14 @@ input[type="color"] {
     margin-top: auto; /* Прижимает блок к низу панели */
     padding: 5px 0;
     font-size: 12px;
-    color: #888;
+    color: var(--text-info-panel);
     text-align: center;
     width: 100%;
 }
 
 .version-info #versionNumber {
     font-weight: bold;
-    color: #aaa;
+    color: var(--text-info-panel);
 }
 
 .layers-panel {

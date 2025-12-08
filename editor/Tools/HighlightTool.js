@@ -7,8 +7,15 @@ export default class HighlightTool extends BaseTool {
             name: 'highlight',
             settingsIds: ['highlightColorLabel']
         });
+
+        this.settings = {
+            color: '#ff0000',
+            thickness: 2,
+        };
         this.color = '#ff0000';
+
         this.supportsCreation = true;
+
     }
 
     activate() {
@@ -19,21 +26,46 @@ export default class HighlightTool extends BaseTool {
             // Установить цвет из активного слоя, если он есть
             const activeLayer = this.editor.getActiveLayer();
             if (activeLayer?.type === 'highlight') {
-                this.color = activeLayer.params.color;
-                colorInput.value = this.color;
-                this.editor.updateToolbarButtons(this.name);
+                this.settings.color = activeLayer.params.color;
+                colorInput.value = this.settings.color;
+                this.editor.updateToolbarButtons();
             } else {
-                this.color = colorInput.value;
+                this.settings.color = colorInput.value;
             }
         }
-
-        this.updateSettingsUI();
     }
 
     deactivate() {
         super.deactivate();
         this.overlay.classList.remove('highlight-mode');
         this.editor.updateToolbarButtons(this.name);
+    }
+
+    getUISettingsConfig() {
+        return {
+            fields: [
+                {
+                    key: 'color',
+                    type: 'color',
+                    label: 'Цвет',
+                    value: this.settings.color,
+                    onChange: (value) => this.updateSetting('color', value)
+                },
+                {
+                    key: 'thickness',
+                    type: 'range',
+                    label: 'Толщина',
+                    min: 1,
+                    max: 10,
+                    value: this.settings.thickness,
+                    onChange: (value) => this.updateSetting('thickness', value)
+                },
+            ]
+        };
+    }
+
+    getSettings() {
+        return this.settings;
     }
 
     setupOverlay() {
@@ -66,26 +98,33 @@ export default class HighlightTool extends BaseTool {
         this.cleanupOverlay();
     }
 
-    updateSettingsUI() {
-        const colorInput = document.getElementById('highlightColor');
-        if (!colorInput) return;
-
-        // Установить начальное значение
-        const activeLayer = this.editor.getActiveLayer();
-        if (activeLayer?.type === 'highlight') {
-            colorInput.value = activeLayer.params.color;
-            this.color = activeLayer.params.color;
+    /**
+     * Обновляет настройку инструмента и применяет её к активному слою, если он текстовый
+     * @param {string} key — имя параметра ('textColor', 'textSize')
+     * @param {string|number} value — новое значение
+     */
+    updateSetting(key, value) {
+        switch (key) {
+            case 'color':
+                this.settings.color = value;
+                break;
+            case 'thickness':
+                this.settings.fontSize = value;
+                break;
+            default:
+                console.warn(`HighlightTool.updateSetting: unknown setting key "${key}"`);
+                return;
         }
 
-        const onChange = () => {
-            this.color = colorInput.value;
-            if (activeLayer?.type === 'highlight') {
-                activeLayer.params.color = this.color;
-                this.editor.render();
+        // Применяем настройку к активному текстовому слою, если есть
+        const activeLayer = this.editor.getActiveLayer();
+        if (activeLayer?.type === 'highlight') {
+            if (key === 'color') {
+                activeLayer.params.color = value;
+            } else if (key === 'thickness') {
+                activeLayer.params.thickness = value;
             }
-        };
-
-        colorInput.removeEventListener('input', onChange);
-        colorInput.addEventListener('input', onChange);
+            this.editor.render(); // перерисовываем
+        }
     }
 }

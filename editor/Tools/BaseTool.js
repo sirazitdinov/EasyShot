@@ -27,15 +27,22 @@ export default class BaseTool {
         this.historyState = null;
     }
 
+    // Абстрактный метод
+    getUISettingsConfig() {
+        throw new Error('Must be implemented by subclass');
+    }
+
     /**
      * Активация инструмента
      * Устанавливает обработчики событий и показывает настройки
      */
     activate() {
         this.isActive = true;
-        this.showSettings();
-        this.editor.updateToolbarButtons(this.name);
+        // this.showSettings();
+        // this.editor.updateToolbarButtons(this.name);
         this.setupOverlay();
+
+        this.editor.showToolSettings(this);
     }
 
     /**
@@ -44,17 +51,20 @@ export default class BaseTool {
      */
     deactivate() {
         this.isActive = false;
-        this.hideSettings();
-        this.editor.updateToolbarButtons(this.name);
+        // this.hideSettings();
+        // this.editor.updateToolbarButtons(this.name);
         this.cleanupOverlay();
         this.isDrawing = false;
+
+        // Убираем настройки
+        this.editor.showToolSettings(null);
     }
 
     /**
      * Настраивает overlay для текущего инструмента
      */
     setupOverlay() {
-        this.overlay.classList.remove('active', 'crop-mode', 'move');
+        this.overlay.classList.remove('active', 'crop-mode', 'move', 'highlight-mode');
         this.overlay.className = '';
         this.overlay.style.display = 'block';
         this.overlay.innerHTML = '';
@@ -70,45 +80,10 @@ export default class BaseTool {
     }
 
     /**
-     * Показывает настройки специфичные для инструмента
-     */
-    // showSettings() {
-    //     const toolSettings = document.getElementById('toolSettings');
-    //     if (toolSettings) {
-    //         // Сначала скрываем все настройки
-    //         toolSettings.style.display = 'flex';
-    //         toolSettings.querySelectorAll('[id$="Label"]').forEach(el => {
-    //             el.style.display = 'none';
-    //         });
-
-    //         // Показываем только нужные настройки
-    //         this.settingsIds.forEach(id => {
-    //             const element = document.getElementById(id);
-    //             if (element) {
-    //                 element.style.display = 'flex';
-    //             }
-    //         });
-
-    //         // Дополнительная настройка UI для конкретного инструмента
-    //         this.updateSettingsUI();
-    //     }
-    // }
-
-    /**
-     * Скрывает все настройки инструмента
-     */
-    // hideSettings() {
-    //     const toolSettings = document.getElementById('toolSettings');
-    //     if (toolSettings) {
-    //         toolSettings.style.display = 'none';
-    //     }
-    // }
-
-    /**
      * Обновляет UI настроек для конкретного инструмента
      * Предназначен для переопределения в дочерних классах
      */
-    updateSettingsUI() {
+    updateSetting() {
         // Базовая реализация для переопределения
     }
 
@@ -139,6 +114,7 @@ export default class BaseTool {
         this.isDrawing = false;
         this.cleanupOverlay();
         this.setupOverlay();
+        this.deactivate();
     }
 
     /**
