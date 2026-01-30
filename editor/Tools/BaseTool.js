@@ -32,6 +32,11 @@ export default class BaseTool {
         throw new Error('Must be implemented by subclass');
     }
 
+    // Применение кропа
+    applyToCroppedCanvas() {
+        throw new Error('Must be implemented by subclass');
+    }
+
     /**
      * Активация инструмента
      * Устанавливает обработчики событий и показывает настройки
@@ -42,7 +47,7 @@ export default class BaseTool {
         // this.editor.updateToolbarButtons(this.name);
         this.setupOverlay();
 
-        this.editor.showToolSettings(this);
+        // this.editor.showToolSettings(this);
     }
 
     /**
@@ -57,7 +62,7 @@ export default class BaseTool {
         this.isDrawing = false;
 
         // Убираем настройки
-        this.editor.showToolSettings(null);
+        // this.editor.showToolSettings(null);
     }
 
     /**

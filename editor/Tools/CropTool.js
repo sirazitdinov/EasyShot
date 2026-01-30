@@ -52,4 +52,8 @@ export default class CropTool extends BaseTool {
     updateSettingsUI() {
         // Crop не имеет настроек, кроме формата/качества — они показываются всегда при активном инструменте
     }
+
+    applyToCroppedCanvas() {
+        // Кроп не применяется к самому себе, этот метод не нужен
+    }
 }

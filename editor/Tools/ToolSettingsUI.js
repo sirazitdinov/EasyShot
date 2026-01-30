@@ -10,12 +10,24 @@ export default class ToolSettingsUI {
     }
 
     renderSettings(tool) {
-        this.clear(); // Очистить предыдущие элементы
         const config = tool.getUISettingsConfig();
+
+        // Скрываем панель если нет настроек
+        if (config.fields.length === 0) {
+            this.container.style.display = 'none';
+            return;
+        }
+
+        // Показываем панель
+
+        this.clear();
         config.fields.forEach(field => {
             const element = this.createFieldElement(field);
             this.container.appendChild(element);
         });
+
+        this.container.style.display = 'flex';
+
     }
 
     createFieldElement(field) {

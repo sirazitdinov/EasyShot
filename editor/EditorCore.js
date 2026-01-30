@@ -6,10 +6,28 @@ import HighlightTool from './Tools/HighlightTool.js';
 import LineTool from './Tools/LineTool.js';
 import TextTool from './Tools/TextTool.js';
 import ToolSettingsUI from './Tools/ToolSettingsUI.js';
+import LayerManager from './LayerManager.js';
 import Helper from './Helper.js';
 
 export default class ImageEditor {
     constructor() {
+        this.initializeDOMElements();
+        this.initializeImageData();
+        this.initializeManagers();
+        this.initializeHistory();
+        this.initializeToolSettings();
+        this.initializeTools();
+        this.initializeConstants();
+        this.initializeState();
+
+        // Инициализация
+        this.init();
+    }
+
+    /**
+     * Инициализирует DOM-элементы
+     */
+    initializeDOMElements() {
         // DOM элементы
         this.canvas = document.getElementById('canvas');
         this.context = this.canvas.getContext('2d', { willReadFrequently: true });
@@ -21,33 +39,50 @@ export default class ImageEditor {
         this.imageWidthElement = document.getElementById('imageWidth');
         this.imageHeightElement = document.getElementById('imageHeight');
         this.fileSizeElement = document.getElementById('fileSize');
+    }
 
+    /**
+     * Инициализирует данные изображения
+     */
+    initializeImageData() {
         // Данные изображения
         this.image = null;
         this.originalImage = null;
         this.scale = 1;
         this.offsetX = 0;
         this.offsetY = 0;
+    }
 
-        // Слои
-        this.layers = [];
-        this.activeLayerIndex = -1;
+    /**
+     * Инициализирует менеджеры (слоев и др.)
+     */
+    initializeManagers() {
+        this.layerManager = new LayerManager(this);
+        this.layerManager.init();
+        this.layerManager.setupDragAndDrop();
+    }
 
-        // Текущий активный слой
-        this.activeLayer = null;
-
+    /**
+     * Инициализирует историю для отмены/повтора
+     */
+    initializeHistory() {
         // История для отмены/повтора
         this.history = [];
         this.historyPosition = -1;
+        this.MAX_HISTORY_SIZE = 50; // Максимальное количество состояний в истории
+    }
 
-
+    /**
+     * Инициализирует настройки инструментов
+     */
+    initializeToolSettings() {
         // Контейнер для вывода настроек инструментов
         this.toolSettingsUI = new ToolSettingsUI(document.getElementById('toolSettings'));
 
         // Хранилище настроек инструментов
         this.toolSettings = {
             // Настройки по умолчанию для каждого инструмента
-            highlight: {color:'#ff0000', thinknes: 2},
+            highlight: {color:'#ff0000', thickness: 2},
             crop: {aspectRatio: 'free'},
             line: {color:'#ff0000', thickness: 2},
             blur: {radius: 5}
@@ -79,7 +114,12 @@ export default class ImageEditor {
                 qualityValue: document.getElementById('qualityValue')
             }
         }
+    }
 
+    /**
+     * Инициализирует инструменты редактора
+     */
+    initializeTools() {
         // Создание инструментов
         this.tools = {
             crop: new CropTool(this,this.settingsElements['crop']),
@@ -91,44 +131,73 @@ export default class ImageEditor {
 
         // Текущий активный инструмент
         this.activeTool = null;
-
-        this.LINE_WIDTH = 2;
-        this.DPR = window.devicePixelRatio || 1;
-        this.HANDLES = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'];
-
-        // Инициализация
-        this.init();
     }
 
+    /**
+     * Инициализирует константы для различных параметров
+     */
+    initializeConstants() {
+        // Константы для различных параметров
+        this.CONSTANTS = {
+            LINE_WIDTH: 2,
+            HANDLE_SIZE: 16,
+            MIN_DIMENSION: 10,
+            ARROW_LENGTH: 10,
+            HANDLE_DISPLAY_SIZE: 6,
+            HANDLE_HIT_TOLERANCE: 12,
+            HANDLE_OFFSET: 4,
+            CROP_TEXT_OFFSET: 10,
+            TEXT_LINE_HEIGHT_RATIO: 1.2,
+            BLUR_RADIUS_DEFAULT: 5,
+            HIGHLIGHT_COLOR_DEFAULT: '#ff0000',
+            LINE_COLOR_DEFAULT: '#ff0000',
+            TEXT_COLOR_DEFAULT: '#000000',
+            TEXT_FONT_SIZE_DEFAULT: 16,
+            TEXT_MAX_WIDTH: 200,
+            TEXT_MAX_HEIGHT: 50
+        };
+
+        this.DPR = window.devicePixelRatio || 1;
+        this.HANDLES = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'];
+    }
+
+    /**
+     * Инициализирует начальное состояние
+     */
+    initializeState() {
+        // Инициализация других состояний
+    }
+
+    /**
+     * Инициализирует редактор изображений
+     * Устанавливает начальный холст, инициализирует менеджер слоев,
+     * добавляет обработчики событий и обновляет кнопки тулбара
+     */
     init() {
         this.setupCanvas();
+        this.layerManager.init(); // Инициализация менеджера слоев
         this.initEventListeners();
-        this.initLayers();
         this.updateToolbarButtons();
         this.loadVersion();
     }
 
+    /**
+     * Устанавливает начальные параметры холста
+     * Задает размеры холста и заливает его белым цветом
+     */
     setupCanvas() {
         // Установка начального размера холста
         this.canvas.width = 800;
         this.canvas.height = 600;
-        this.context.fillStyle = '#ffffff';
+        this.context.fillStyle = '#fff';
         this.context.fillRect(0, 0, this.canvas.width, this.canvas.height);
         this.addHistoryState();
     }
 
-    initLayers() {
-        // Создание базового слоя
-        this.layers = [{
-            id: 'layer-' + Date.now(),
-            type: 'изображение',
-            visible: true,
-            imageData: this.context.getImageData(0, 0, this.canvas.width, this.canvas.height)
-        }];
-        this.activeLayerIndex = 0;
-        this.updateLayersPanel();
-    }
-
+    /**
+     * Устанавливает активный инструмент для редактора
+     * @param {Object} tool - Инструмент, который нужно установить как активный
+     */
     setActiveTool(tool) {
         // Деактивируем предыдущий активный инструмент и прослущивание событий
         if (this.activeTool) {
@@ -151,6 +220,9 @@ export default class ImageEditor {
         }
     }
 
+    /**
+     * Обновляет состояние кнопок тулбара в зависимости от активного инструмента
+     */
     updateToolbarButtons() {
         const activeToolType = this.activeTool?.name;
         // Обновление состояния кнопок в тулбаре
@@ -162,6 +234,10 @@ export default class ImageEditor {
         });
     }
 
+    /**
+     * Инициализирует обработчики событий для различных действий в редакторе
+     * Устанавливает слушатели для загрузки изображения, сохранения, отмены, инструментов, слоев и т.д.
+     */
     initEventListeners() {
         // Загрузка изображения
         document.getElementById('fileBtn').addEventListener('click', () => {
@@ -174,6 +250,7 @@ export default class ImageEditor {
 
         // Сохранение изображения
         document.getElementById('saveBtn').addEventListener('click', () => {
+            this.applyCrop();
             this.saveImage();
         });
 
@@ -237,6 +314,10 @@ export default class ImageEditor {
         this.setupLayerDragAndDrop();
     }
 
+    /**
+     * Добавляет текущее состояние холста в историю для возможности отмены/повтора
+     * Также ограничивает размер истории до MAX_HISTORY_SIZE
+     */
     addHistoryState() {
         // Сохранение текущего состояния для отмены/повтора
         const currentState = this.canvas.toDataURL();
@@ -245,9 +326,19 @@ export default class ImageEditor {
             this.history = this.history.slice(0, this.historyPosition + 1);
         }
         this.history.push(currentState);
-        this.historyPosition = this.history.length - 1;
+
+        // Ограничиваем размер истории до MAX_HISTORY_SIZE
+        if (this.history.length > this.MAX_HISTORY_SIZE) {
+            this.history = this.history.slice(-this.MAX_HISTORY_SIZE);
+            this.historyPosition = this.history.length - 1;
+        } else {
+            this.historyPosition = this.history.length - 1;
+        }
     }
 
+    /**
+     * Отменяет последнее действие, восстанавливая предыдущее состояние из истории
+     */
     undo() {
         if (this.historyPosition > 0) {
             this.historyPosition--;
@@ -261,6 +352,10 @@ export default class ImageEditor {
         }
     }
 
+    /**
+     * Загружает изображение в редактор
+     * @param {File} file - Файл изображения для загрузки
+     */
     loadImage(file) {
 
         // Сброс активного инструмента
@@ -270,6 +365,12 @@ export default class ImageEditor {
         }
 
         if (!file) return;
+
+        // Проверка типа файла
+        if (!file.type.match('image.*')) {
+            alert('Пожалуйста, выберите файл изображения (JPEG, PNG, GIF, и т.д.)');
+            return;
+        }
 
         const reader = new FileReader();
         reader.onload = (e) => {
@@ -303,47 +404,80 @@ export default class ImageEditor {
                 // Обновление информации об изображении
                 this.updateImageInfo(file);
 
+                // Обнволение базового слоя после загрузки избражения
+                if(this.layerManager.layers.length > 0 ){
+                    const baseLayer = this.layerManager.layers[0];
+                    this.context.drawImage(img, 0, 0, this.canvas.width, this.canvas.height);
+                    baseLayer.imageData = this.context.getImageData(0,0, this.canvas.width, this.canvas.height);
+                    this.layerManager.updateLayersPanel();
+                }
+
                 // Сброс истории
                 this.history = [this.canvas.toDataURL()];
                 this.historyPosition = 0;
 
                 // Инициализация слоев
-                this.initLayers();
+                // this.initLayers();
+
             };
             img.src = e.target.result;
         };
         reader.readAsDataURL(file);
     }
 
+    /**
+     * Сохраняет текущее изображение в указанном формате
+     * @param {string} format - Формат изображения ('png', 'jpeg', и т.д.)
+     * @param {number} quality - Качество изображения (от 0 до 1)
+     */
     saveImage(format = 'png', quality = 0.9) {
 
-        // Получение параметров сохранения из UI, если они видны
-        // TODO: Перенести получение значений формата и качества
-        // const formatSelect = document.getElementById('formatSelect');
-        // const qualityRange = document.getElementById('qualityRange');
+        try{
+            let canvasToSave = this.canvas;
 
-        // if (formatSelect && formatSelect.style.display !== 'none') {
-        //     format = formatSelect.value;
-        // }
+            // Проверяем, что canvas существует
+            if (!canvasToSave) {
+                console.error('Canvas element not found');
+                return;
+            }
 
-        // if (qualityRange && qualityRange.style.display !== 'none') {
-        //     quality = parseFloat(qualityRange.value);
-        // }
+            const link = document.createElement('a');
+            const ts = new Date().toISOString().slice(0, 19).replace(/[:T-]/g, '_');
+            link.download = `image_${ts}.${format === 'jpeg' ? 'jpg' : format}`;
 
-        const link = document.createElement('a');
-        link.download = `image.${format === 'jpeg' ? 'jpg' : format}`;
+            let dataUrl;
+            if (format === 'jpeg') {
+                dataUrl = canvasToSave.toDataURL(`image/${format}`, quality);
+            } else {
+                dataUrl = canvasToSave.toDataURL(`image/${format}`);
+            }
 
-        if (format === 'jpeg') {
-            link.href = this.canvas.toDataURL(`image/${format}`, quality);
-        } else {
-            link.href = this.canvas.toDataURL(`image/${format}`);
+            if (!dataUrl || dataUrl === 'data:,') return;
+
+            link.href = dataUrl;
+
+            // Для надежности добавляем в DOM, кликаем, удаляем
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+
+        } catch (err) {
+            console.error('ERROR in saveImage:', err);
         }
-
-        link.click();
     }
 
+    /**
+     * Обновляет информацию об изображении в интерфейсе
+     * @param {File} file - Файл изображения для получения информации
+     */
     updateImageInfo(file) {
         if (!this.image) return;
+
+        // Проверяем, что DOM элементы существуют
+        if (!this.imageSizeElement || !this.imageWidthElement || !this.imageHeightElement || !this.fileSizeElement) {
+            console.warn('Some image info elements are missing');
+            return;
+        }
 
         this.imageSizeElement.textContent = `${Math.round(file.size / 1024)} КБ`;
         this.imageWidthElement.textContent = `${this.canvas.width}px`;
@@ -351,92 +485,54 @@ export default class ImageEditor {
 
         // Приблизительный размер файла после сохранения
         this.canvas.toBlob((blob) => {
-            this.fileSizeElement.textContent = `${Math.round(blob.size / 1024)} КБ`;
+            if (blob) {
+                this.fileSizeElement.textContent = `${Math.round(blob.size / 1024)} КБ`;
+            }
         }, 'image/png');
     }
 
+    /**
+     * Обновляет отображение холста при изменении размера окна
+     */
     updateCanvasDisplay() {
         // Можно добавить логику для адаптации отображения холста под размер окна
     }
 
+    /**
+     * Добавляет новый слой в менеджер слоев
+     * @param {Object} layer - Объект слоя для добавления
+     * @returns {Object} - Добавленный слой
+     */
     addLayer(layer) {
-        layer.id = 'layer-' + Date.now();
-        this.layers.push(layer);
-        this.activeLayer = layer;
-        this.render();
-        this.addHistoryState();
-        this.updateLayersPanel();
+        return this.layerManager.addLayer(layer);
     }
 
+    /**
+     * Устанавливает активный слой по ID
+     * @param {string} layerId - ID слоя для установки как активного
+     */
     setActiveLayer(layerId) {
-        const layerIndex = this.layers.findIndex(layer => layer.id === layerId);
-        if (layerIndex !== -1) {
-            this.activeLayerIndex = layerIndex;
-            this.updateLayersPanel();
-            this.redrawCanvas();
-        }
+        this.layerManager.setActiveLayerById(layerId);
     }
 
+    /**
+     * Возвращает активный слой
+     * @returns {Object} - Активный слой
+     */
     getActiveLayer() {
-        return this.activeLayer;
+        return this.layerManager.activeLayer;
     }
 
-    // Получение настроек для конкретного инструмента
-    getToolSettings(toolName) {
-        return this.toolSettings[toolName] || {};
-    }
-
-    showToolSettings(tool) {
-        const toolSettingsContainer = document.getElementById('toolSettings');
-        if (!toolSettingsContainer) return;
-
-        // Скрываем панель настроек инструментов
-        toolSettingsContainer.style.display = 'flex';
-
-        // Скрыть все label'ы и элементы настроек по умолчанию
-        const allLabels = toolSettingsContainer.querySelectorAll('[id$="Label"]');
-        allLabels.forEach(el => el.style.display = 'none');
-
-        const allInputs = toolSettingsContainer.querySelectorAll('input, select');
-        allInputs.forEach(el => el.style.display = 'none');
-
-        if (!tool) {
-            // Нет активного инструмента — скрыть весь блок
-            toolSettingsContainer.style.display = 'none';
-            return;
-        }
-
-        // Получить от инструмента, что показывать
-        // const toolSettings = tool.getSettings();
-
-        // Показать запрошенные элементы
-        // toolSettings.visibleElements.forEach(id => {
-        //     const el = document.getElementById(id);
-        //     if (el) el.style.display = 'block';
-        // });
-
-
-        // Применить текущие значения настроек (если переданы)
-        if (toolSettings.settingsValues) {
-            for (const [id, value] of Object.entries(toolSettings.settingsValues)) {
-                const el = document.getElementById(id);
-                if (el && el.value !== undefined) {
-                    el.value = value;
-                }
-            }
-        }
-    }
-
-    // Сохранение настроек пользователя в localStorage TODO
+    // Сохранение настроек пользователя в localStorage TODO Сохранять в расширении
     saveUserSettings() {
-        try {
-            localStorage.setItem('editorToolSettings', JSON.stringify(this.toolSettings));
-        } catch (e) {
-            console.error('Failed to save user settings:', e);
-        }
+        // try {
+        //     localStorage.setItem('editorToolSettings', JSON.stringify(this.toolSettings));
+        // } catch (e) {
+        //     console.error('Failed to save user settings:', e);
+        // }
     }
 
-    // Загрузка сохраненных настроек TODO
+    // Загрузка сохраненных настроек TODO Восстанавливать из расширения
     loadUserSettings() {
         try {
             const savedSettings = localStorage.getItem('editorToolSettings');
@@ -450,244 +546,201 @@ export default class ImageEditor {
         }
     }
 
+    /**
+     * Обновляет панель слоев
+     */
     updateLayersPanel() {
-        const layersList = document.getElementById('layersList');
-        layersList.innerHTML = '';
-
-        // Обратный порядок для отображения (верхний слой в списке - самый верхний визуально)
-        [...this.layers].reverse().forEach((layer, index) => {
-            const layerItem = document.createElement('div');
-            layerItem.className = `layer-item ${this.activeLayerIndex === this.layers.length - 1 - index ? 'active' : ''}`;
-            layerItem.dataset.layerId = layer.id;
-            layerItem.draggable = true;
-
-            layerItem.innerHTML = `
-                <span class="layer-drag-handle">⋮</span>
-                <span class="layer-icon">${index + 1}</span>
-                <span class="layer-name">${layer.type}</span>
-            `;
-
-            layersList.appendChild(layerItem);
-        });
+        try {
+            this.layerManager.updateLayersPanel();
+        } catch (error) {
+            console.error('Error updating layers panel:', error);
+        }
     }
 
+    /**
+     * Настраивает перетаскивание слоев
+     */
     setupLayerDragAndDrop() {
-        // Реализация перетаскивания слоев для изменения порядка
-        const layersList = document.getElementById('layersList');
-
-        layersList.addEventListener('dragstart', (e) => {
-            const layerItem = e.target.closest('.layer-item');
-            if (layerItem) {
-                e.dataTransfer.setData('text/plain', layerItem.dataset.layerId);
-                layerItem.classList.add('dragging');
-            }
-        });
-
-        layersList.addEventListener('dragend', (e) => {
-            const layerItem = e.target.closest('.layer-item');
-            if (layerItem) {
-                layerItem.classList.remove('dragging');
-            }
-            // Сброс индикаторов вставки
-            document.querySelectorAll('.layer-item.insert-above, .layer-item.insert-below').forEach(el => {
-                el.classList.remove('insert-above', 'insert-below');
-            });
-        });
-
-        layersList.addEventListener('dragover', (e) => {
-            e.preventDefault();
-            const targetItem = e.target.closest('.layer-item');
-            if (!targetItem) return;
-
-            // Сброс всех индикаторов вставки
-            document.querySelectorAll('.layer-item.insert-above, .layer-item.insert-below').forEach(el => {
-                el.classList.remove('insert-above', 'insert-below');
-            });
-
-            const rect = targetItem.getBoundingClientRect();
-            const midpoint = rect.top + rect.height / 2;
-
-            if (e.clientY < midpoint) {
-                targetItem.classList.add('insert-above');
-            } else {
-                targetItem.classList.add('insert-below');
-            }
-        });
-
-        layersList.addEventListener('drop', (e) => {
-            e.preventDefault();
-            const targetItem = e.target.closest('.layer-item');
-            if (!targetItem) return;
-
-            const draggedLayerId = e.dataTransfer.getData('text/plain');
-            const insertAbove = targetItem.classList.contains('insert-above');
-
-            // Перемещение слоя в массиве
-            this.moveLayer(draggedLayerId, targetItem.dataset.layerId, insertAbove);
-
-            // Обновление панели слоев
-            this.updateLayersPanel();
-
-            // Перерисовка холста
-            this.redrawCanvas();
-        });
-
-        layersList.addEventListener('click', (e) => {
-            const layerItem = e.target.closest('.layer-item');
-            if (layerItem && !e.target.closest('.layer-drag-handle')) {
-                const layerId = layerItem.dataset.layerId;
-                this.setActiveLayer(layerId);
-            }
-        });
+        try {
+            this.layerManager.setupDragAndDrop();
+        } catch (error) {
+            console.error('Error setting up layer drag and drop:', error);
+        }
     }
 
+    /**
+     * Перемещает слой в списке слоев
+     * @param {string} draggedLayerId - ID перемещаемого слоя
+     * @param {string} targetLayerId - ID целевого слоя
+     * @param {boolean} insertAbove - Вставлять ли слой выше целевого
+     */
     moveLayer(draggedLayerId, targetLayerId, insertAbove) {
-        const draggedIndex = this.layers.findIndex(layer => layer.id === draggedLayerId);
-        const targetIndex = this.layers.findIndex(layer => layer.id === targetLayerId);
-
-        if (draggedIndex === -1 || targetIndex === -1 || draggedIndex === targetIndex) return;
-
-        // Перемещение элемента в массиве
-        const [movedLayer] = this.layers.splice(draggedIndex, 1);
-        let newPosition = targetIndex;
-
-        if (insertAbove) {
-            // Если вставка выше целевого слоя
-            if (draggedIndex > targetIndex) newPosition--;
-        } else {
-            // Если вставка ниже целевого слоя
-            if (draggedIndex < targetIndex) newPosition++;
-        }
-
-        this.layers.splice(newPosition, 0, movedLayer);
-
-        // Обновление индекса активного слоя
-        if (this.activeLayerIndex === draggedIndex) {
-            this.activeLayerIndex = newPosition;
-        } else if (this.activeLayerIndex > draggedIndex && this.activeLayerIndex <= newPosition) {
-            this.activeLayerIndex--;
-        } else if (this.activeLayerIndex < draggedIndex && this.activeLayerIndex >= newPosition) {
-            this.activeLayerIndex++;
+        try {
+            this.layerManager.moveLayer(draggedLayerId, targetLayerId, insertAbove);
+        } catch (error) {
+            console.error('Error moving layer:', error);
         }
     }
 
+    /**
+     * Перерисовывает весь холст и добавляет состояние в историю
+     */
     redrawCanvas() {
-        this.context.clearRect(0, 0, this.canvas.width, this.canvas.height);
-
-        // Отрисовка всех видимых слоев
-        this.layers.forEach((layer, index) => {
-            if (layer.visible) {
-                const tempCanvas = document.createElement('canvas');
-                tempCanvas.width = this.canvas.width;
-                tempCanvas.height = this.canvas.height;
-                const tempCtx = tempCanvas.getContext('2d');
-
-                // Восстановление данных слоя
-                const imageData = layer.imageData;
-                tempCtx.putImageData(imageData, 0, 0);
-
-                // Отрисовка на основном холсте
-                this.context.drawImage(tempCanvas, 0, 0);
-            }
-        });
-
-        this.addHistoryState();
+        try {
+            this.layerManager.redrawAllLayers();
+            this.addHistoryState();
+        } catch (error) {
+            console.error('Error redrawing canvas:', error);
+        }
     }
 
-    render() {
-        if (!this.image) return;
-        this.context.clearRect(0, 0, this.canvas.width, this.canvas.height);
-        this.context.drawImage(this.image, 0, 0);
+    /**
+     * Основной метод рендеринга, отрисовывающий изображение и все слои
+     * @param {Object|null} dirtyRegion - Область для частичной перерисовки (опционально)
+     */
+    render(dirtyRegion = null) {
+        try {
+            if (!this.image) return;
 
-        this.layers.forEach(l => {
-            if (l.type === 'blur' && l.rect) {
+            // Проверяем, что контекст существует
+            if (!this.context) {
+                console.error('Canvas context is not available');
+                return;
+            }
+
+            // Если задана область изменений, рисуем только её, иначе - весь холст
+            if (dirtyRegion) {
+                // Ограничиваем область рисования
                 this.context.save();
-                this.context.filter = `blur(${l.params.radius}px)`;
-                this.context.drawImage(this.image,
-                    l.rect.x, l.rect.y, l.rect.width, l.rect.height,
-                    l.rect.x, l.rect.y, l.rect.width, l.rect.height);
-                this.context.restore();
-            }
-            if (l.type === 'highlight' && l.rect) {
-                this.context.strokeStyle = l.params.color;
-                this.context.lineWidth = l.params.thickness || this.LINE_WIDTH;
-                this.context.strokeRect(l.rect.x, l.rect.y, l.rect.width, l.rect.height);
-            }
-            if (l.type === 'line' && l.points) {
-                const { x1, y1, x2, y2, color } = l.points;
-                this.context.strokeStyle = color;
-                this.context.lineWidth = l.params.thickness || 2;
                 this.context.beginPath();
-                this.context.moveTo(x1, y1);
-                this.context.lineTo(x2, y2);
-                const ang = Math.atan2(y2 - y1, x2 - x1);
-                const arr = 10;
-                this.context.lineTo(x2 - arr * Math.cos(ang - Math.PI / 6), y2 - arr * Math.sin(ang - Math.PI / 6));
-                this.context.moveTo(x2, y2);
-                this.context.lineTo(x2 - arr * Math.cos(ang + Math.PI / 6), y2 - arr * Math.sin(ang + Math.PI / 6));
-                this.context.stroke();
+                this.context.rect(dirtyRegion.x, dirtyRegion.y, dirtyRegion.width, dirtyRegion.height);
+                this.context.clip();
+
+                // Рисуем только в указанной области
+                this.context.drawImage(this.image,
+                    dirtyRegion.x, dirtyRegion.y, dirtyRegion.width, dirtyRegion.height,
+                    dirtyRegion.x, dirtyRegion.y, dirtyRegion.width, dirtyRegion.height);
+            } else {
+                // Очистка всего холста
+                this.context.clearRect(0, 0, this.canvas.width, this.canvas.height);
+
+                // 1. Сначала отрисовываем изображение
+                if (this.image) {
+                    this.context.drawImage(this.image, 0, 0, this.canvas.width, this.canvas.height);
+                }
             }
-            if (l.type === 'text' && l.rect) {
+
+            // 2. Отрисовка всех видимых слоёв (растровые и векторные)
+            // Растровые слои
+            this.layerManager.redrawAllLayers();
+
+            // Векторные слои
+            this.layerManager.layers.forEach(l => {
+                // if(!l.visible) return;
+
+                if(l.type === 'blur' && l.rect) {
+                    this.context.save();
+                    this.context.filter = `blur(${l.params.radius}px)`;
+                    this.context.drawImage(this.image,
+                        l.rect.x, l.rect.y, l.rect.width, l.rect.height,
+                        l.rect.x, l.rect.y, l.rect.width, l.rect.height);
+                    this.context.restore();
+                }
+
+                if (l.type === 'highlight' && l.rect) {
+                    this.context.strokeStyle = l.params.color;
+                    this.context.lineWidth = l.params.thickness || this.LINE_WIDTH;
+                    this.context.strokeRect(l.rect.x, l.rect.y, l.rect.width, l.rect.height);
+                }
+
+                if (l.type === 'line' && l.points) {
+                    const { x1, y1, x2, y2 } = l.points;
+                    this.context.strokeStyle = l.params.color || '#ff0000';
+                    this.context.lineWidth = l.params.thickness || 2;
+                    this.context.beginPath();
+                    this.context.moveTo(x1, y1);
+                    this.context.lineTo(x2, y2);
+
+                    // Отрисовка стрелки
+                    const ang = Math.atan2(y2 - y1, x2 - x1);
+                    const arr = 10;
+                    this.context.lineTo(x2 - arr * Math.cos(ang - Math.PI / 6), y2 - arr * Math.sin(ang - Math.PI / 6));
+                    this.context.moveTo(x2, y2);
+                    this.context.lineTo(x2 - arr * Math.cos(ang + Math.PI / 6), y2 - arr * Math.sin(ang + Math.PI / 6));
+                    this.context.stroke();
+                }
+
+                if (l.type === 'text' && l.rect) {
+                    this.context.save();
+                    this.context.fillStyle = l.params.color || '#000000';
+                    this.context.font = `${l.params.fontSize || 16}px Arial`;
+                    this.context.textBaseline = 'top';
+                    this.context.textAlign = 'left';
+                    this.wrapTextInRect(
+                        this.context, l.params.text || 'Текст',
+                        l.rect.x, l.rect.y,
+                        l.rect.width, l.rect.height,
+                        l.params.fontSize || 16
+                    );
+                    this.context.restore();
+                }
+            });
+
+            // 3. Отрисовка кроп-затенения (если есть кроп-слой)
+            const cropLayer = this.layerManager.layers.find(l => l.type === 'crop');
+            if (cropLayer && cropLayer.rect) {
                 this.context.save();
-                this.context.fillStyle = l.params.color;
-                this.context.font = `${l.params.fontSize}px Arial`;
-                this.context.textBaseline = 'top';
-                this.context.textAlign = 'left';
-                this.wrapTextInRect(
-                    this.context, l.params.text,
-                    l.rect.x, l.rect.y,
-                    l.rect.width, l.rect.height,
-                    l.params.fontSize
+                this.context.fillStyle = 'rgba(0, 0, 0, 0.5)';
+
+                // Верхняя полоса
+                this.context.fillRect(0, 0, this.canvas.width, cropLayer.rect.y);
+                // Нижняя полоса
+                this.context.fillRect(0, cropLayer.rect.y + cropLayer.rect.height,
+                    this.canvas.width, this.canvas.height - cropLayer.rect.y - cropLayer.rect.height);
+                // Левая полоса
+                this.context.fillRect(0, cropLayer.rect.y,
+                    cropLayer.rect.x, cropLayer.rect.height);
+                // Правая полоса
+                this.context.fillRect(cropLayer.rect.x + cropLayer.rect.width, cropLayer.rect.y,
+                    this.canvas.width - cropLayer.rect.x - cropLayer.rect.width, cropLayer.rect.height);
+
+                this.context.restore();
+
+                // Рисуем границу кропа и размеры
+                this.context.strokeStyle = '#ffffff';
+                this.context.lineWidth = 2;
+                this.context.strokeRect(cropLayer.rect.x, cropLayer.rect.y,
+                    cropLayer.rect.width, cropLayer.rect.height);
+
+                this.context.fillStyle = '#ffffff';
+                this.context.font = '14px Arial';
+                this.context.fillText(
+                    `${Helper.formatSize(cropLayer.rect.width)} × ${Helper.formatSize(cropLayer.rect.height)}`,
+                    cropLayer.rect.x - 10,
+                    cropLayer.rect.y - 10
                 );
+            }
+
+            // 4. Отрисовка поверх интерактивных элементов инструментов
+            const activeLayer = this.layerManager.activeLayer;
+
+            // Отрисовка handles для активного слоя
+            if (activeLayer?.rect) {
+                this.drawHandles(this.context, activeLayer.rect);
+            }
+
+            // 5. Отрисовка точек для инструмента линии
+            if (activeLayer?.type === 'line' && activeLayer.points) {
+                this.drawLinePoints(this.context, activeLayer.points);
+            }
+
+            // Восстанавливаем контекст, если использовали clipping
+            if (dirtyRegion) {
                 this.context.restore();
             }
-        });
-
-        // Кроп-затемнение
-        const cropLayer = this.layers.find(l => l.type === 'crop');
-        if (cropLayer) {
-            // Затемняем область вне кропа
-            this.context.save();
-            this.context.fillStyle = 'rgba(0, 0, 0, 0.5)';
-
-            // Верхняя полоса
-            this.context.fillRect(0, 0, this.canvas.width, cropLayer.rect.y);
-            // Нижняя полоса
-            this.context.fillRect(0, cropLayer.rect.y + cropLayer.rect.height,
-                this.canvas.width, this.canvas.height - cropLayer.rect.y - cropLayer.rect.height);
-            // Левая полоса
-            this.context.fillRect(0, cropLayer.rect.y,
-                cropLayer.rect.x, cropLayer.rect.height);
-            // Правая полоса
-            this.context.fillRect(cropLayer.rect.x + cropLayer.rect.width, cropLayer.rect.y,
-                this.canvas.width - cropLayer.rect.x - cropLayer.rect.width, cropLayer.rect.height);
-
-            this.context.restore();
-
-            // Рисуем границу области кропа
-            this.context.strokeStyle = '#ffffff';
-            this.context.lineWidth = 2;
-            this.context.strokeRect(cropLayer.rect.x, cropLayer.rect.y,
-                cropLayer.rect.width, cropLayer.rect.height);
-
-            // Отображаем размеры
-            this.context.fillStyle = '#ffffff';
-            this.context.font = '14px Arial';
-            this.context.fillText(
-                `${Helper.formatSize(cropLayer.rect.width)} × ${Helper.formatSize(cropLayer.rect.height)}`,
-                cropLayer.rect.x - 10,
-                cropLayer.rect.y - 10
-            );
+        } catch (error) {
+            console.error('Error during rendering:', error);
         }
-
-        if (this.activeLayer?.rect) {
-            this.drawHandles(this.context, this.activeLayer.rect);
-        }
-        if (this.activeLayer?.type === 'line' && this.activeLayer.points) {
-            this.drawLinePoints(this.context, this.activeLayer.points);
-        }
-
-        // Ручки (drawHandles etc.) — по желанию
     }
 
     /**
@@ -700,27 +753,32 @@ export default class ImageEditor {
      */
     drawHandles(ctx, rect) {
         if (!ctx || !rect) return;
-        ctx.save();
-        ctx.fillStyle = '#0096ff';
-        const size = 6;
+        try {
+            ctx.save();
+            ctx.fillStyle = '#0096ff';
+            const size = 6;
 
-        const handles = [
-            { x: rect.x, y: rect.y, dx: -1, dy: -1 },           // nw
-            { x: rect.x + rect.width / 2, y: rect.y, dx: 0, dy: -1 }, // n
-            { x: rect.x + rect.width, y: rect.y, dx: 1, dy: -1 },     // ne
-            { x: rect.x, y: rect.y + rect.height / 2, dx: -1, dy: 0 }, // w
-            { x: rect.x + rect.width, y: rect.y + rect.height / 2, dx: 1, dy: 0 }, // e
-            { x: rect.x, y: rect.y + rect.height, dx: -1, dy: 1 },    // sw
-            { x: rect.x + rect.width / 2, y: rect.y + rect.height, dx: 0, dy: 1 }, // s
-            { x: rect.x + rect.width, y: rect.y + rect.height, dx: 1, dy: 1 }      // se
-        ];
+            const handles = [
+                { x: rect.x, y: rect.y, dx: -1, dy: -1 },           // nw
+                { x: rect.x + rect.width / 2, y: rect.y, dx: 0, dy: -1 }, // n
+                { x: rect.x + rect.width, y: rect.y, dx: 1, dy: -1 },     // ne
+                { x: rect.x, y: rect.y + rect.height / 2, dx: -1, dy: 0 }, // w
+                { x: rect.x + rect.width, y: rect.y + rect.height / 2, dx: 1, dy: 0 }, // e
+                { x: rect.x, y: rect.y + rect.height, dx: -1, dy: 1 },    // sw
+                { x: rect.x + rect.width / 2, y: rect.y + rect.height, dx: 0, dy: 1 }, // s
+                { x: rect.x + rect.width, y: rect.y + rect.height, dx: 1, dy: 1 }      // se
+            ];
 
-        handles.forEach(h => {
-            const cx = h.x + h.dx * 4;
-            const cy = h.y + h.dy * 4;
-            ctx.fillRect(cx - size / 2, cy - size / 2, size, size);
-        });
-        ctx.restore();
+            handles.forEach(h => {
+                const cx = h.x + h.dx * 4;
+                const cy = h.y + h.dy * 4;
+                ctx.fillRect(cx - size / 2, cy - size / 2, size, size);
+            });
+            ctx.restore();
+        } catch (error) {
+            console.error('Error drawing handles:', error);
+            ctx.restore(); // Ensure context is restored even if drawing fails
+        }
     }
 
     /**
@@ -732,459 +790,976 @@ export default class ImageEditor {
      */
     drawLinePoints(ctx, points) {
         if (!ctx || !points) return;
-        ctx.save();
-        ctx.fillStyle = '#0096ff';
-        const r = 5;
-        ctx.beginPath();
-        ctx.arc(points.x1, points.y1, r, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.beginPath();
-        ctx.arc(points.x2, points.y2, r, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.restore();
+        try {
+            ctx.save();
+            ctx.fillStyle = '#0096ff';
+            const r = 5;
+            ctx.beginPath();
+            ctx.arc(points.x1, points.y1, r, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.arc(points.x2, points.y2, r, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+        } catch (error) {
+            console.error('Error drawing line points:', error);
+            ctx.restore(); // Ensure context is restored even if drawing fails
+        }
     }
 
+    /**
+     * Обработчик события нажатия мыши на оверлее
+     * @param {MouseEvent} e - Событие мыши
+     */
     onOverlayMouseDown(e) {
-        const coords = this.getCanvasCoords(e);
-        let hit = null;
+        try {
+            const coords = this.getCanvasCoords(e);
+            let hit = null;
 
-        // 1. Поиск попадания в слой
-        for (const l of this.layers) {
-            if (l.rect && coords.x >= l.rect.x && coords.x <= l.rect.x + l.rect.width &&
-                coords.y >= l.rect.y && coords.y <= l.rect.y + l.rect.height) {
-                hit = l;
-                break;
-            }
-            if (l.points) {
-                const d1 = Math.hypot(coords.x - l.points.x1, coords.y - l.points.y1);
-                const d2 = Math.hypot(coords.x - l.points.x2, coords.y - l.points.y2);
-                if (d1 < 12 || d2 < 12) { hit = l; break; }
-            }
-        }
-
-        // 2. Двойной клик → редактирование текста
-        if (e.detail === 2 && hit?.type === 'text') {
-            e.preventDefault();
-            const newText = prompt('Введите текст:', hit.params.text || '');
-            if (newText !== null) {
-                this.addHistoryState();
-                hit.params.text = newText;
-                this.render();
-                this.updateLayersPanel();
-            }
-            return;
-        }
-
-        // 3. Проверка попадания в ручки (только для прямоугольных слоёв)
-        let handleHit = null;
-        if (hit?.rect) {
-            for (const h of this.HANDLES) {
-                const [dx, dy] = {
-                    nw: [-1, -1], n: [0, -1], ne: [1, -1],
-                    w: [-1, 0], e: [1, 0],
-                    sw: [-1, 1], s: [0, 1], se: [1, 1]
-                }[h];
-
-                const centerX = hit.rect.x + hit.rect.width * (dx + 1) / 2;
-                const centerY = hit.rect.y + hit.rect.height * (dy + 1) / 2;
-
-                const hitSize = 16;
-                const hitX = centerX - hitSize / 2;
-                const hitY = centerY - hitSize / 2;
-
-                if (coords.x >= hitX && coords.x <= hitX + hitSize &&
-                    coords.y >= hitY && coords.y <= hitY + hitSize) {
-                    handleHit = h;
+            // 1. Поиск попадания в слой
+            for (const l of this.layerManager.layers) {
+                if (l.rect && coords.x >= l.rect.x && coords.x <= l.rect.x + l.rect.width &&
+                    coords.y >= l.rect.y && coords.y <= l.rect.y + l.rect.height) {
+                    hit = l;
                     break;
                 }
+                if (l.points) {
+                    const d1 = Math.hypot(coords.x - l.points.x1, coords.y - l.points.y1);
+                    const d2 = Math.hypot(coords.x - l.points.x2, coords.y - l.points.y2);
+                    if (d1 < 12 || d2 < 12) { hit = l; break; }
+                }
             }
-        }
 
-        // 4. Ручки → resize
-        if (handleHit) {
-            this.activeLayer = hit;
-            this.dragState = {
-                start: coords,
-                layer: hit,
-                handle: handleHit,
-                orig: { ...hit.rect }
-            };
-            this.selectionOverlay.className = `resize-${handleHit}`;
-            this.updateLayersPanel();
-            return;
-        }
+            // 2. Двойной клик → редактирование текста
+            if (e.detail === 2 && hit?.type === 'text') {
+                e.preventDefault();
+                const newText = prompt('Введите текст:', hit.params.text || '');
+                if (newText !== null) {
+                    this.addHistoryState();
+                    hit.params.text = newText;
+                    this.render();
+                    this.updateLayersPanel();
+                }
+                return;
+            }
 
-        // 5. Точки линии
-        if (hit?.type === 'line') {
-            const d1 = Math.hypot(coords.x - hit.points.x1, coords.y - hit.points.y1);
-            const d2 = Math.hypot(coords.x - hit.points.x2, coords.y - hit.points.y2);
-            let ptHandle = null;
-            if (d1 < 12) ptHandle = 'x1';
-            else if (d2 < 12) ptHandle = 'x2';
+            // 3. Проверка попадания в ручки (только для прямоугольных слоёв)
+            let handleHit = null;
+            if (hit?.rect) {
+                for (const h of this.HANDLES) {
+                    const [dx, dy] = {
+                        nw: [-1, -1], n: [0, -1], ne: [1, -1],
+                        w: [-1, 0], e: [1, 0],
+                        sw: [-1, 1], s: [0, 1], se: [1, 1]
+                    }[h];
 
-            if (ptHandle) {
+                    const centerX = hit.rect.x + hit.rect.width * (dx + 1) / 2;
+                    const centerY = hit.rect.y + hit.rect.height * (dy + 1) / 2;
+
+                    const hitSize = 16;
+                    const hitX = centerX - hitSize / 2;
+                    const hitY = centerY - hitSize / 2;
+
+                    if (coords.x >= hitX && coords.x <= hitX + hitSize &&
+                        coords.y >= hitY && coords.y <= hitY + hitSize) {
+                        handleHit = h;
+                        break;
+                    }
+                }
+            }
+
+            // 4. Ручки → resize
+            if (handleHit) {
                 this.activeLayer = hit;
                 this.dragState = {
                     start: coords,
                     layer: hit,
-                    handle: ptHandle,
-                    orig: { ...hit.points }
+                    handle: handleHit,
+                    orig: { ...hit.rect }
                 };
+                this.selectionOverlay.className = `resize-${handleHit}`;
+                this.updateLayersPanel();
+                return;
+            }
+
+            // 5. Точки линии
+            if (hit?.type === 'line') {
+                const d1 = Math.hypot(coords.x - hit.points.x1, coords.y - hit.points.y1);
+                const d2 = Math.hypot(coords.x - hit.points.x2, coords.y - hit.points.y2);
+                let ptHandle = null;
+                if (d1 < 12) ptHandle = 'x1';
+                else if (d2 < 12) ptHandle = 'x2';
+
+                if (ptHandle) {
+                    this.activeLayer = hit;
+                    this.dragState = {
+                        start: coords,
+                        layer: hit,
+                        handle: ptHandle,
+                        orig: { ...hit.points }
+                    };
+                    this.selectionOverlay.style.cursor = 'move';
+                    this.updateLayersPanel();
+                    return;
+                }
+            }
+
+            // 6. Попадание в слой → move
+            if (hit) {
+                this.activeLayer = hit;
+                const isRect = !!hit.rect;
+                this.dragState = {
+                    start: coords,
+                    layer: hit,
+                    handle: 'move',
+                    orig: isRect ? { ...hit.rect } : { ...hit.points }
+                };
+                this.selectionOverlay.className = 'move';
                 this.selectionOverlay.style.cursor = 'move';
                 this.updateLayersPanel();
                 return;
             }
-        }
 
-        // 6. Попадание в слой → move
-        if (hit) {
-            this.activeLayer = hit;
-            const isRect = !!hit.rect;
-            this.dragState = {
-                start: coords,
-                layer: hit,
-                handle: 'move',
-                orig: isRect ? { ...hit.rect } : { ...hit.points }
-            };
-            this.selectionOverlay.className = 'move';
-            this.selectionOverlay.style.cursor = 'move';
-            this.updateLayersPanel();
-            return;
-        }
+            // 7. Создание нового слоя — только если активен инструмент и он поддерживает прямоугольники/линии
+            if (this.activeTool?.supportsCreation) {
+                const type = this.activeTool.name;
+                let newLayer;
 
-        // 7. Создание нового слоя — только если активен инструмент и он поддерживает прямоугольники/линии
-        if (this.activeTool?.supportsCreation) {
-            const type = this.activeTool.name;
-            let newLayer;
-
-            switch (type) {
-                case 'crop':
-                    if (this.layers.some(l => l.type === 'crop')) return;
-                    newLayer = {
-                        type: 'crop',
-                        rect: { x: coords.x, y: coords.y, width: 0, height: 0 },
-                        params: {}
-                    };
-                    break;
-                case 'blur':
-                    newLayer = {
-                        type: 'blur',
-                        rect: { x: coords.x, y: coords.y, width: 0, height: 0 },
-                        params: { radius: 5 }
-                    };
-                    break;
-                case 'highlight':
-                    newLayer = {
-                        type: 'highlight',
-                        rect: { x: coords.x, y: coords.y, width: 0, height: 0 },
-                        params: { color: this.activeTool.color, thickness: this.activeTool.thickness }
-                    };
-                    break;
-                case 'line':
-                    newLayer = {
-                        type: 'line',
-                        points: { x1: coords.x, y1: coords.y, x2: coords.x, y2: coords.y, color: '#ff0000' },
-                        params: { color: this.activeTool.color, thickness: this.activeTool.thickness }
-                    };
-                    break;
-                case 'text':
-                    newLayer = {
-                        type: 'text',
-                        rect: { x: coords.x, y: coords.y, width: 200, height: 50 },
-                        params: { text: 'Текст', color: '#000000', fontSize: 16 }
-                    };
-                    break;
-                default:
-                    return;
-            }
-
-            this.addLayer(newLayer);
-            this.dragState = {
-                start: coords,
-                layer: newLayer,
-                handle: type === 'line' ? 'x2' : 'create',
-                orig: type === 'line'
-                    ? { x1: coords.x, y1: coords.y, x2: coords.x, y2: coords.y }
-                    : { x: coords.x, y: coords.y, width: 0, height: 0 }
-            };
-        }
-    }
-
-    onMouseMove(e) {
-        if (!this.dragState) return;
-        const coords = this.getCanvasCoords(e);
-        const { handle, layer, start, orig } = this.dragState;
-
-        if (handle === 'create') {
-            const x1 = Math.min(start.x, coords.x);
-            const y1 = Math.min(start.y, coords.y);
-            const w = Math.abs(coords.x - start.x);
-            const h = Math.abs(coords.y - start.y);
-
-            layer.rect.x = Math.max(0, x1);
-            layer.rect.y = Math.max(0, y1);
-            layer.rect.width = Math.max(10, Math.min(this.canvas.width - layer.rect.x, w));
-            layer.rect.height = Math.max(10, Math.min(this.canvas.height - layer.rect.y, h));
-        }
-        else if (handle === 'move') {
-            const dx = coords.x - start.x;
-            const dy = coords.y - start.y;
-            if (layer.rect) {
-                layer.rect.x = Math.max(0, Math.min(this.canvas.width - orig.width, orig.x + dx));
-                layer.rect.y = Math.max(0, Math.min(this.canvas.height - orig.height, orig.y + dy));
-            } else if (layer.points) {
-                layer.points.x1 = Math.max(0, Math.min(this.canvas.width, orig.x1 + dx));
-                layer.points.y1 = Math.max(0, Math.min(this.canvas.height, orig.y1 + dy));
-                layer.points.x2 = Math.max(0, Math.min(this.canvas.width, orig.x2 + dx));
-                layer.points.y2 = Math.max(0, Math.min(this.canvas.height, orig.y2 + dy));
-            }
-        }
-        else if (layer.rect) {
-            this.updateRectFromHandle(handle, layer, start, coords.x, coords.y);
-        }
-        else if (layer.points && (handle === 'x1' || handle === 'x2')) {
-            layer.points[handle === 'x1' ? 'x1' : 'x2'] = Math.max(0, Math.min(this.canvas.width, coords.x));
-            layer.points[handle === 'x1' ? 'y1' : 'y2'] = Math.max(0, Math.min(this.canvas.height, coords.y));
-        }
-
-        this.render();
-    }
-
-    onMouseUp(e) {
-        if (this.dragState) {
-            this.addHistoryState(); // после завершения
-        }
-        this.dragState = null;
-        this.selectionOverlay.className = '';
-        this.selectionOverlay.style.cursor = 'default';
-        this.render();
-    }
-
-    onOverlayHover(e) {
-        if (this.dragState) return; // не мешаем при drag
-
-        const coords = this.getCanvasCoords(e);
-        let cls = '';
-
-        this.layers.forEach((l) => {
-            if (!l.rect) return;
-            this.HANDLES.forEach((h) => {
-                const [dx, dy] = {
-                    nw: [-1, -1], n: [0, -1], ne: [1, -1],
-                    w: [-1, 0], e: [1, 0],
-                    sw: [-1, 1], s: [0, 1], se: [1, 1]
-                }[h];
-
-                const centerX = l.rect.x + l.rect.width * (dx + 1) / 2;
-                const centerY = l.rect.y + l.rect.height * (dy + 1) / 2;
-
-                // Область попадания в ручку
-                const hitSize = 16; // HANDLE_SIZE
-                const hx = centerX - hitSize / 2;
-                const hy = centerY - hitSize / 2;
-
-                if (coords.x >= hx && coords.x <= hx + hitSize &&
-                    coords.y >= hy && coords.y <= hy + hitSize) {
-                    cls = `resize-${h}`;
-                    return true;
+                switch (type) {
+                    case 'crop':
+                        if (this.layerManager.layers.some(l => l.type === 'crop')) return;
+                        newLayer = {
+                            type: 'crop',
+                            rect: { x: coords.x, y: coords.y, width: 0, height: 0 },
+                            params: {}
+                        };
+                        break;
+                    case 'blur':
+                        newLayer = {
+                            type: 'blur',
+                            rect: { x: coords.x, y: coords.y, width: 0, height: 0 },
+                            params: { radius: 5 }
+                        };
+                        break;
+                    case 'highlight':
+                        newLayer = {
+                            type: 'highlight',
+                            rect: { x: coords.x, y: coords.y, width: 0, height: 0 },
+                            params: { color: this.activeTool.color, thickness: this.activeTool.thickness }
+                        };
+                        break;
+                    case 'line':
+                        newLayer = {
+                            type: 'line',
+                            points: { x1: coords.x, y1: coords.y, x2: coords.x, y2: coords.y, color: '#ff0000' },
+                            params: { color: this.activeTool.color, thickness: this.activeTool.thickness }
+                        };
+                        break;
+                    case 'text':
+                        newLayer = {
+                            type: 'text',
+                            rect: { x: coords.x, y: coords.y, width: 200, height: 50 },
+                            params: { text: 'Текст', color: '#000000', fontSize: 16 }
+                        };
+                        break;
+                    default:
+                        return;
                 }
+
+                this.addLayer(newLayer);
+                this.dragState = {
+                    start: coords,
+                    layer: newLayer,
+                    handle: type === 'line' ? 'x2' : 'create',
+                    orig: type === 'line'
+                        ? { x1: coords.x, y1: coords.y, x2: coords.x, y2: coords.y }
+                        : { x: coords.x, y: coords.y, width: 0, height: 0 }
+                };
+            }
+        } catch (error) {
+            console.error('Error in onOverlayMouseDown:', error);
+        }
+    }
+
+    /**
+     * Обработчик события движения мыши
+     * @param {MouseEvent} e - Событие мыши
+     */
+    onMouseMove(e) {
+        try {
+            if (!this.dragState) return;
+
+            // Проверяем, что e и canvas существуют
+            if (!e || !this.canvas) {
+                console.error('Invalid event or canvas element');
+                return;
+            }
+
+            const coords = this.getCanvasCoords(e);
+            const { handle, layer, start, orig } = this.dragState;
+
+            // Проверяем, что все необходимые объекты существуют
+            if (!layer || !start || !orig) {
+                console.error('Missing layer, start, or orig data');
+                return;
+            }
+
+            if (handle === 'create') {
+                const x1 = Math.min(start.x, coords.x);
+                const y1 = Math.min(start.y, coords.y);
+                const w = Math.abs(coords.x - start.x);
+                const h = Math.abs(coords.y - start.y);
+
+                layer.rect.x = Math.max(0, x1);
+                layer.rect.y = Math.max(0, y1);
+                layer.rect.width = Math.max(10, Math.min(this.canvas.width - layer.rect.x, w));
+                layer.rect.height = Math.max(10, Math.min(this.canvas.height - layer.rect.y, h));
+            }
+            else if (handle === 'move') {
+                const dx = coords.x - start.x;
+                const dy = coords.y - start.y;
+                if (layer.rect) {
+                    if (!orig || typeof orig.width === 'undefined' || typeof orig.height === 'undefined') {
+                        console.error('Invalid orig dimensions for rectangle movement');
+                        return;
+                    }
+                    layer.rect.x = Math.max(0, Math.min(this.canvas.width - orig.width, orig.x + dx));
+                    layer.rect.y = Math.max(0, Math.min(this.canvas.height - orig.height, orig.y + dy));
+                } else if (layer.points) {
+                    if (!orig || typeof orig.x1 === 'undefined' || typeof orig.y1 === 'undefined' ||
+                        typeof orig.x2 === 'undefined' || typeof orig.y2 === 'undefined') {
+                        console.error('Invalid orig coordinates for point movement');
+                        return;
+                    }
+                    layer.points.x1 = Math.max(0, Math.min(this.canvas.width, orig.x1 + dx));
+                    layer.points.y1 = Math.max(0, Math.min(this.canvas.height, orig.y1 + dy));
+                    layer.points.x2 = Math.max(0, Math.min(this.canvas.width, orig.x2 + dx));
+                    layer.points.y2 = Math.max(0, Math.min(this.canvas.height, orig.y2 + dy));
+                }
+            }
+            else if (layer.rect) {
+                this.updateRectFromHandle(handle, layer, start, coords.x, coords.y);
+            }
+            else if (layer.points && (handle === 'x1' || handle === 'x2')) {
+                layer.points[handle === 'x1' ? 'x1' : 'x2'] = Math.max(0, Math.min(this.canvas.width, coords.x));
+                layer.points[handle === 'x1' ? 'y1' : 'y2'] = Math.max(0, Math.min(this.canvas.height, coords.y));
+            }
+
+            this.render();
+        } catch (error) {
+            console.error('Error in onMouseMove:', error);
+        }
+    }
+
+    /**
+     * Обработчик события отпускания мыши
+     * @param {MouseEvent} e - Событие мыши
+     */
+    onMouseUp(e) {
+        try {
+            if (this.dragState) {
+                this.addHistoryState(); // после завершения
+            }
+            this.dragState = null;
+            this.selectionOverlay.className = '';
+            this.selectionOverlay.style.cursor = 'default';
+            this.render();
+        } catch (error) {
+            console.error('Error in onMouseUp:', error);
+        }
+    }
+
+    /**
+     * Обработчик события наведения мыши на оверлей
+     * @param {MouseEvent} e - Событие мыши
+     */
+    onOverlayHover(e) {
+        try {
+            if (this.dragState) return; // не мешаем при drag
+
+            // Проверяем, что e и canvas существуют
+            if (!e || !this.canvas || !this.layerManager || !this.layerManager.layers) {
+                console.error('Invalid event or canvas element or layer manager');
+                return;
+            }
+
+            const coords = this.getCanvasCoords(e);
+            let cls = '';
+
+            // Проверяем, что HANDLES и selectionOverlay существуют
+            if (!this.HANDLES || !this.selectionOverlay) {
+                console.error('HANDLES or selectionOverlay not initialized');
+                return;
+            }
+
+            this.layerManager.layers.forEach((l) => {
+                if (!l.rect) return;
+
+                // Проверяем, что l.rect имеет правильные свойства
+                if (typeof l.rect.x === 'undefined' || typeof l.rect.y === 'undefined' ||
+                    typeof l.rect.width === 'undefined' || typeof l.rect.height === 'undefined') {
+                    console.warn('Invalid rect properties for layer', l);
+                    return;
+                }
+
+                this.HANDLES.forEach((h) => {
+                    const [dx, dy] = {
+                        nw: [-1, -1], n: [0, -1], ne: [1, -1],
+                        w: [-1, 0], e: [1, 0],
+                        sw: [-1, 1], s: [0, 1], se: [1, 1]
+                    }[h];
+
+                    const centerX = l.rect.x + l.rect.width * (dx + 1) / 2;
+                    const centerY = l.rect.y + l.rect.height * (dy + 1) / 2;
+
+                    // Область попадания в ручку
+                    const hitSize = 16; // HANDLE_SIZE
+                    const hx = centerX - hitSize / 2;
+                    const hy = centerY - hitSize / 2;
+
+                    if (coords.x >= hx && coords.x <= hx + hitSize &&
+                        coords.y >= hy && coords.y <= hy + hitSize) {
+                        cls = `resize-${h}`;
+                        return true;
+                    }
+                });
+                if (cls) return;
             });
-            if (cls) return;
-        });
 
-        this.selectionOverlay.className = cls;
-        this.selectionOverlay.style.cursor = cls ? 'pointer' : 'default';
+            this.selectionOverlay.className = cls;
+            this.selectionOverlay.style.cursor = cls ? 'pointer' : 'default';
+        } catch (error) {
+            console.error('Error in onOverlayHover:', error);
+        }
     }
 
+    /**
+     * Обновляет прямоугольник слоя на основе перемещения ручки
+     * @param {string} handle - Тип ручки ('nw', 'n', 'ne', и т.д.)
+     * @param {Object} layer - Слой, который обновляется
+     * @param {Object} start - Начальные координаты
+     * @param {number} x - Координата x
+     * @param {number} y - Координата y
+     */
     updateRectFromHandle(handle, layer, start, x, y) {
-        const orig = this.dragState.orig;
-        const dx = x - start.x;
-        const dy = y - start.y;
-        const MIN = 10;
+        try {
+            const orig = this.dragState.orig;
+            const dx = x - start.x;
+            const dy = y - start.y;
+            const MIN = 10;
 
-        let nx = orig.x, ny = orig.y, nw = orig.width, nh = orig.height;
+            let nx = orig.x, ny = orig.y, nw = orig.width, nh = orig.height;
 
-        switch (handle) {
-            case 'se': nw += dx; nh += dy; break;
-            case 'sw': nw -= dx; nh += dy; nx += dx; break;
-            case 'ne': nw += dx; nh -= dy; ny += dy; break;
-            case 'nw': nw -= dx; nh -= dy; nx += dx; ny += dy; break;
-            case 'n': nh -= dy; ny += dy; break;
-            case 's': nh += dy; break;
-            case 'w': nw -= dx; nx += dx; break;
-            case 'e': nw += dx; break;
+            switch (handle) {
+                case 'se': nw += dx; nh += dy; break;
+                case 'sw': nw -= dx; nh += dy; nx += dx; break;
+                case 'ne': nw += dx; nh -= dy; ny += dy; break;
+                case 'nw': nw -= dx; nh -= dy; nx += dx; ny += dy; break;
+                case 'n': nh -= dy; ny += dy; break;
+                case 's': nh += dy; break;
+                case 'w': nw -= dx; nx += dx; break;
+                case 'e': nw += dx; break;
+            }
+
+            // Ограничения
+            if (handle.includes('w')) {
+                const maxX = orig.x + orig.width;
+                nx = Math.min(maxX - MIN, nx);
+                nx = Math.max(0, nx);
+                nw = maxX - nx;
+            } else if (handle.includes('e')) {
+                nw = Math.max(MIN, Math.min(this.canvas.width - orig.x, nw));
+            }
+
+            if (handle.includes('n')) {
+                const maxY = orig.y + orig.height;
+                ny = Math.min(maxY - MIN, ny);
+                ny = Math.max(0, ny);
+                nh = maxY - ny;
+            } else if (handle.includes('s')) {
+                nh = Math.max(MIN, Math.min(this.canvas.height - orig.y, nh));
+            }
+
+            layer.rect.x = nx;
+            layer.rect.y = ny;
+            layer.rect.width = nw;
+            layer.rect.height = nh;
+        } catch (error) {
+            console.error('Error in updateRectFromHandle:', error);
         }
-
-        // Ограничения
-        if (handle.includes('w')) {
-            const maxX = orig.x + orig.width;
-            nx = Math.min(maxX - MIN, nx);
-            nx = Math.max(0, nx);
-            nw = maxX - nx;
-        } else if (handle.includes('e')) {
-            nw = Math.max(MIN, Math.min(this.canvas.width - orig.x, nw));
-        }
-
-        if (handle.includes('n')) {
-            const maxY = orig.y + orig.height;
-            ny = Math.min(maxY - MIN, ny);
-            ny = Math.max(0, ny);
-            nh = maxY - ny;
-        } else if (handle.includes('s')) {
-            nh = Math.max(MIN, Math.min(this.canvas.height - orig.y, nh));
-        }
-
-        layer.rect.x = nx;
-        layer.rect.y = ny;
-        layer.rect.width = nw;
-        layer.rect.height = nh;
     }
 
+    /**
+     * Сбрасывает текущий выбор слоя и состояние перетаскивания
+     */
     resetSelection() {
-        this.activeLayer = null;
-        this.dragState = null;
-        this.selectionOverlay.className = '';
-        this.selectionOverlay.style.cursor = 'default';
-        this.render();
-        this.updateLayersPanel();
+        try {
+            this.activeLayer = null;
+            this.dragState = null;
+            this.selectionOverlay.className = '';
+            this.selectionOverlay.style.cursor = 'default';
+            this.render();
+            this.updateLayersPanel();
+        } catch (error) {
+            console.error('Error in resetSelection:', error);
+        }
     }
 
+    /**
+     * Удаляет активный слой
+     */
     deleteActiveLayer() {
-        if (!this.activeLayer) return;
-        this.layers = this.layers.filter(l => l !== this.activeLayer);
-        this.activeLayer = null;
-        this.addHistoryState();
-        this.render();
-        this.updateLayersPanel();
+        try {
+            this.layerManager.deleteActiveLayer();
+            this.render();
+        } catch (error) {
+            console.error('Error in deleteActiveLayer:', error);
+        }
     }
 
+    /**
+     * Обертывает текст в прямоугольник с учетом максимальной ширины и высоты
+     * @param {CanvasRenderingContext2D} context - Контекст 2D для рисования
+     * @param {string} text - Текст для обертывания
+     * @param {number} x - Координата x начала текста
+     * @param {number} y - Координата y начала текста
+     * @param {number} maxWidth - Максимальная ширина текста
+     * @param {number} maxHeight - Максимальная высота текста
+     * @param {number} fontSize - Размер шрифта
+     */
     wrapTextInRect(context, text, x, y, maxWidth, maxHeight, fontSize) {
         if (!text || maxWidth <= 0 || maxHeight <= 0) return; // Проверяем на валидность
 
-        const words = text.split(' ');
-        let line = '';
-        let currentY = y;
-        const lineHeight = fontSize * 1.2;
+        try {
+            const words = text.split(' ');
+            let line = '';
+            let currentY = y;
+            const lineHeight = fontSize * 1.2;
 
-        for (let i = 0; i < words.length; i++) {
-            const testLine = line + words[i] + ' ';
-            const metrics = context.measureText(testLine);
-            const testWidth = metrics.width;
+            for (let i = 0; i < words.length; i++) {
+                const testLine = line + words[i] + ' ';
+                const metrics = context.measureText(testLine);
+                const testWidth = metrics.width;
 
-            // Проверяем, помещается ли строка по ширине
-            if (testWidth > maxWidth && i > 0) {
-                // Проверяем, помещается ли строка по высоте
-                if (currentY + lineHeight > y + maxHeight) {
-                    // Если не помещается, рисуем многоточие в предыдущей строке
-                    if (line.trim() !== '') {
-                        // Обрезаем строку, добавляем ...
-                        let truncatedLine = line.trim();
-                        let lastSpaceIndex = truncatedLine.lastIndexOf(' ');
-                        while (context.measureText(truncatedLine + '...').width > maxWidth && lastSpaceIndex > 0) {
-                            truncatedLine = truncatedLine.substring(0, lastSpaceIndex);
-                            lastSpaceIndex = truncatedLine.lastIndexOf(' ');
+                // Проверяем, помещается ли строка по ширине
+                if (testWidth > maxWidth && i > 0) {
+                    // Проверяем, помещается ли строка по высоте
+                    if (currentY + lineHeight > y + maxHeight) {
+                        // Если не помещается, рисуем многоточие в предыдущей строке
+                        if (line.trim() !== '') {
+                            // Обрезаем строку, добавляем ...
+                            let truncatedLine = line.trim();
+                            let lastSpaceIndex = truncatedLine.lastIndexOf(' ');
+                            while (context.measureText(truncatedLine + '...').width > maxWidth && lastSpaceIndex > 0) {
+                                truncatedLine = truncatedLine.substring(0, lastSpaceIndex);
+                                lastSpaceIndex = truncatedLine.lastIndexOf(' ');
+                            }
+                            context.fillText(truncatedLine + '...', x, currentY);
                         }
-                        context.fillText(truncatedLine + '...', x, currentY);
+                        return; // Выходим, если высота превышена
                     }
-                    return; // Выходим, если высота превышена
+                    // Рисуем текущую строку
+                    context.fillText(line, x, currentY);
+                    // Начинаем новую строку
+                    line = words[i] + ' ';
+                    currentY += lineHeight;
+                } else {
+                    line = testLine;
                 }
-                // Рисуем текущую строку
-                context.fillText(line, x, currentY);
-                // Начинаем новую строку
-                line = words[i] + ' ';
-                currentY += lineHeight;
-            } else {
-                line = testLine;
             }
-        }
 
-        // Проверяем, помещается ли последняя строка по высоте
-        if (currentY + lineHeight <= y + maxHeight) {
-            context.fillText(line, x, currentY);
-        } else {
-            // Если последняя строка не помещается, обрезаем её
-            let truncatedLine = line.trim();
-            let lastSpaceIndex = truncatedLine.lastIndexOf(' ');
-            while (context.measureText(truncatedLine + '...').width > maxWidth && lastSpaceIndex > 0) {
-                truncatedLine = truncatedLine.substring(0, lastSpaceIndex);
-                lastSpaceIndex = truncatedLine.lastIndexOf(' ');
+            // Проверяем, помещается ли последняя строка по высоте
+            if (currentY + lineHeight <= y + maxHeight) {
+                context.fillText(line, x, currentY);
+            } else {
+                // Если последняя строка не помещается, обрезаем её
+                let truncatedLine = line.trim();
+                let lastSpaceIndex = truncatedLine.lastIndexOf(' ');
+                while (context.measureText(truncatedLine + '...').width > maxWidth && lastSpaceIndex > 0) {
+                    truncatedLine = truncatedLine.substring(0, lastSpaceIndex);
+                    lastSpaceIndex = truncatedLine.lastIndexOf(' ');
+                }
+                context.fillText(truncatedLine + '...', x, currentY);
             }
-            context.fillText(truncatedLine + '...', x, currentY);
+        } catch (error) {
+            console.error('Error in wrapTextInRect:', error);
         }
     }
 
+    /**
+     * Форматирует размер файла в удобочитаемый формат
+     * @param {number} bytes - Размер файла в байтах
+     * @returns {string} - Форматированный размер файла
+     */
     formatFileSize(bytes) {
         if (bytes === 0) return '0 Bytes';
-        const k = 1024;
-        const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-        const i = Math.floor(Math.log(bytes) / Math.log(k));
-        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-    }
-
-    formatSize(value) {
-        return Math.round(value * 10) / 10; // Округляем до 1 знака после запятой
-    }
-
-    getCanvasCoords(event) {
-        const r = this.canvas.getBoundingClientRect();
-        return {
-            x: (event.clientX - r.left) * (this.canvas.width / r.width),
-            y: (event.clientY - r.top) * (this.canvas.height / r.height)
-        };
-    }
-
-    updateLayersFromCanvas() {
-        // Обновление данных активного слоя из холста
-        if (this.activeLayerIndex >= 0 && this.activeLayerIndex < this.layers.length) {
-            this.layers[this.activeLayerIndex].imageData = this.context.getImageData(0, 0, this.canvas.width, this.canvas.height);
+        try {
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        } catch (error) {
+            console.error('Error in formatFileSize:', error);
+            return 'Unknown Size';
         }
     }
 
-    applyCrop(startPoint, endPoint) {
-        // Логика кадрирования изображения
-        const x = Math.min(startPoint.x, endPoint.x);
-        const y = Math.min(startPoint.y, endPoint.y);
-        const width = Math.abs(endPoint.x - startPoint.x);
-        const height = Math.abs(endPoint.y - startPoint.y);
+    /**
+     * Получает координаты холста для события мыши
+     * @param {MouseEvent} event - Событие мыши
+     * @returns {Object} - Объект с координатами x и y
+     */
+    getCanvasCoords(event) {
+        try {
+            const wrapper = this.canvas.parentElement; // .canvas-wrapper
+            const r = wrapper.getBoundingClientRect();
+            const canvasR = this.canvas.getBoundingClientRect();
+            // Защита от деления на ноль
+            // if (!r.width || !r.height) return { x: 0, y: 0 };
 
-        if (width <= 0 || height <= 0) return;
-
-        // Создание нового холста для кадрированного изображения
-        const tempCanvas = document.createElement('canvas');
-        const tempCtx = tempCanvas.getContext('2d');
-        tempCanvas.width = width;
-        tempCanvas.height = height;
-
-        // Копирование кадрированной области
-        tempCtx.drawImage(
-            this.canvas,
-            x, y, width, height,
-            0, 0, width, height
-        );
-
-        // Обновление основного холста
-        this.canvas.width = width;
-        this.canvas.height = height;
-        this.context.drawImage(tempCanvas, 0, 0);
-
-        // Обновление данных слоев
-        this.layers.forEach(layer => {
-            const layerCanvas = document.createElement('canvas');
-            layerCanvas.width = width;
-            layerCanvas.height = height;
-            const layerCtx = layerCanvas.getContext('2d');
-
-            layerCtx.putImageData(layer.imageData, 0, 0);
-            layerCtx.clearRect(0, 0, layerCanvas.width, layerCanvas.height);
-            layerCtx.drawImage(tempCanvas, 0, 0);
-
-            layer.imageData = layerCtx.getImageData(0, 0, width, height);
-        });
-
-        this.addHistoryState();
-        this.updateCanvasDisplay();
+            return {
+                x: (event.clientX - canvasR.left) * (this.canvas.width / this.canvas.clientWidth),
+                y: (event.clientY - canvasR.top) * (this.canvas.height / this.canvas.clientHeight)
+            };
+        } catch (error) {
+            console.error('Error in getCanvasCoords:', error);
+            return { x: 0, y: 0 };
+        }
     }
 
+    /**
+     * Применяет кроп к изображению, обрезая его до выбранной области
+     */
+    applyCrop() {
+        try {
+            // Проверяем, что все необходимые компоненты существуют
+            if (!this.layerManager || !this.layerManager.layers) {
+                console.error('Layer manager or layers not initialized');
+                return;
+            }
+
+            const cropLayer = this.layerManager.layers.find(l => l.type === 'crop');
+
+            if (!cropLayer || !cropLayer.rect) {
+                console.warn('No crop layer found or crop rectangle is invalid');
+                return;
+            }
+
+            // Проверяем, что canvas и selectionOverlay существуют
+            if (!this.canvas || !this.selectionOverlay) {
+                console.error('Canvas or selection overlay not found');
+                return;
+            }
+
+            this.selectionOverlay.style.width = `${this.canvas.clientWidth}px`;
+            this.selectionOverlay.style.height = `${this.canvas.clientHeight}px`;
+
+            const { x, y, width, height } = cropLayer.rect;
+
+            if (width <= 0 || height <= 0) {
+                console.warn('Invalid crop dimensions');
+                return;
+            }
+
+            // Ensure original image is loaded before proceeding
+            if (!this.originalImage || !this.originalImage.complete) {
+                console.error('Original image not loaded');
+                return;
+            }
+
+            // Convert coordinates from canvas space to original image space
+            // The canvas might be displayed at a different size than its internal resolution
+            // So we need to map the crop coordinates properly
+            // We need to determine the relationship between current canvas and original image
+            // Since the canvas might have been modified by previous crops, we need to calculate
+            // the current scale based on the ratio of current canvas to original image
+
+            // Calculate the scale factors based on current canvas vs original image
+            const currentCanvasScaleX = this.canvas.width / this.originalImage.naturalWidth;
+            const currentCanvasScaleY = this.canvas.height / this.originalImage.naturalHeight;
+
+            // Validate scale factors to prevent division by zero
+            if (currentCanvasScaleX <= 0 || currentCanvasScaleY <= 0) {
+                console.error('Invalid canvas scale factors');
+                return;
+            }
+
+            // Convert the crop coordinates from current canvas space to original image space
+            const origCropX = Math.round(x / currentCanvasScaleX);
+            const origCropY = Math.round(y / currentCanvasScaleY);
+            const origCropWidth = Math.round(width / currentCanvasScaleX);
+            const origCropHeight = Math.round(height / currentCanvasScaleY);
+
+            // Ensure the calculated crop area is within the bounds of the original image
+            let validX = Math.max(0, Math.min(origCropX, this.originalImage.naturalWidth - origCropWidth));
+            let validY = Math.max(0, Math.min(origCropY, this.originalImage.naturalHeight - origCropHeight));
+            const validWidth = Math.min(origCropWidth, this.originalImage.width - validX);
+            const validHeight = Math.min(origCropHeight, this.originalImage.height - validY);
+
+            if (validWidth <= 0 || validHeight <= 0) {
+                console.warn('Calculated crop area is invalid');
+                return;
+            }
+
+            // Создание нового холста для кадрированного изображения
+            const tempCanvas = document.createElement('canvas');
+            if (!tempCanvas) {
+                console.error('Could not create temporary canvas');
+                return;
+            }
+
+            const tempCtx = tempCanvas.getContext('2d');
+            if (!tempCtx) {
+                console.error('Could not get 2D context for temporary canvas');
+                return;
+            }
+
+            tempCanvas.width = validWidth;
+            tempCanvas.height = validHeight;
+
+            tempCtx.drawImage(
+                this.originalImage,
+                validX, validY, validWidth, validHeight,
+                0, 0, validWidth, validHeight
+            );
+
+            // 1. Рисуем основное изображение (без масштабирования, 1:1) в cropped области
+            tempCtx.drawImage(
+                this.originalImage, // используем оригинальное изображение, а не текущий холст
+                validX, validY, validWidth, validHeight,  // Source: x, y, width, height from original image
+                0, 0, validWidth, validHeight             // Destination: x, y, width, height on new canvas
+            );
+
+            // 2. Применяем эффекты (blur, highlight, line, text) только к видимым частям в области кропа
+            // Фильтруем crop слой и применяем остальные
+            if (this.layerManager.layers && Array.isArray(this.layerManager.layers)) {
+                this.layerManager.layers.filter(l => l.type !== 'crop').forEach(layer => {
+                    // Для прямоугольных слоев проверяем попадание в область кропа
+                    if (layer.rect) {
+                        // Convert layer coordinates to original image space before applying crop offset
+                        const layerOrigX = Math.round(layer.rect.x / currentCanvasScaleX);
+                        const layerOrigY = Math.round(layer.rect.y / currentCanvasScaleY);
+
+                        const layerX = layerOrigX - validX; // смещение относительно кропа
+                        const layerY = layerOrigY - validY;
+
+                        // Calculate original dimensions
+                        const layerOrigWidth = Math.round(layer.rect.width / currentCanvasScaleX);
+                        const layerOrigHeight = Math.round(layer.rect.height / currentCanvasScaleY);
+
+                        // Пропускаем слои полностью вне области кропа
+                        if (layerX + layerOrigWidth < 0 || layerY + layerOrigHeight < 0 ||
+                            layerX > validWidth || layerY > validHeight) return;
+
+                        if (layer.type === 'blur') {
+                            // смещённые координаты относительно кропа
+                            const shiftedX = layerOrigX - validX;
+                            const shiftedY = layerOrigY - validY;
+                            const shiftedR = shiftedX + layerOrigWidth;
+                            const shiftedB = shiftedY + layerOrigHeight;
+
+                            // Границы кроп-области
+                            const cropLeft = 0, cropTop = 0, cropRight = validWidth, cropBottom = validHeight;
+
+                            // Находим пересечение (видимую часть)
+                            const visibleLeft = Math.max(cropLeft, shiftedX);
+                            const visibleTop = Math.max(cropTop, shiftedY);
+                            const visibleRight = Math.min(cropRight, shiftedR);
+                            const visibleBottom = Math.min(cropBottom, shiftedB);
+                            const visibleWidth = visibleRight - visibleLeft;
+                            const visibleHeight = visibleBottom - visibleTop;
+
+                            // Пропускаем, если пересечения нет
+                            if (visibleWidth <= 0 || visibleHeight <= 0) return;
+
+                            tempCtx.save();
+                            tempCtx.filter = `blur(${layer.params.radius}px)`;
+                            tempCtx.beginPath();
+                            tempCtx.rect(0, 0, validWidth, validHeight);
+                            tempCtx.clip();
+
+                            // Источник: смещённые координаты НА ИСХОДНОМ ИЗОБРАЖЕНИИ — layer.rect.x, layer.rect.y!
+                            const srcX = layerOrigX + (visibleLeft - shiftedX); // = layer.rect.x + отступ от левого края пересечения
+                            const srcY = layerOrigY + (visibleTop - shiftedY);
+                            // Размеры источника = размерам пересечения (1:1, без масштаба)
+                            const srcW = visibleWidth;
+                            const srcH = visibleHeight;
+
+                            // Назначение: видимая часть внутри кропа
+                            const dstX = visibleLeft;
+                            const dstY = visibleTop;
+
+                            tempCtx.drawImage(
+                                this.originalImage,
+                                srcX, srcY, srcW, srcH,
+                                dstX, dstY, srcW, srcH
+                            );
+                            tempCtx.restore();
+                        }
+                        else if (layer.type === 'highlight') {
+                            // Задаем цвет и толщину линий
+                            tempCtx.strokeStyle = layer.params.color;
+                            tempCtx.lineWidth = layer.params.thickness || this.LINE_WIDTH;
+
+                            // смещённые координаты относительно кропа
+                            const shiftedX = layerOrigX - validX;
+                            const shiftedY = layerOrigY - validY;
+                            const shiftedR = shiftedX + layerOrigWidth;
+                            const shiftedB = shiftedY + layerOrigHeight;
+
+                            // Границы кроп-области
+                            const cropLeft = 0, cropTop = 0, cropRight = validWidth, cropBottom = validHeight;
+
+                            // Находим пересечение (видимую часть)
+                            const visibleLeft = Math.max(cropLeft, shiftedX);
+                            const visibleTop = Math.max(cropTop, shiftedY);
+                            const visibleRight = Math.min(cropRight, shiftedR);
+                            const visibleBottom = Math.min(cropBottom, shiftedB);
+
+                            const visibleWidth = visibleRight - visibleLeft;
+                            const visibleHeight = visibleBottom - visibleTop;
+
+                            // Пропускаем, если пересечения нет
+                            if (visibleWidth <= 0 || visibleHeight <= 0) return;
+
+                            tempCtx.save();
+                            tempCtx.beginPath();
+                            tempCtx.rect(0, 0, validWidth, validHeight); // clip к области кропа
+                            tempCtx.clip();
+
+                            // Рисуем видимую часть контура внутри кропа
+                            tempCtx.strokeRect(shiftedX, shiftedY, layerOrigWidth, layerOrigHeight);
+                            tempCtx.restore();
+                        }
+                        else if (layer.type === 'text') {
+                            tempCtx.save();
+                            tempCtx.fillStyle = layer.params.color;
+                            tempCtx.font = `${layer.params.fontSize || 16}px Arial`;
+                            tempCtx.textAlign = 'left';
+                            tempCtx.textBaseline = 'top';
+
+                            // Корректируем координаты текста относительно кропа
+                            const textX = layerOrigX - validX;
+                            const textY = layerOrigY - validY;
+
+                            // Calculate the available space within the crop area for the text
+                            const availableWidth = Math.min(layerOrigWidth, validWidth - textX);
+                            const availableHeight = Math.min(layerOrigHeight, validHeight - textY);
+
+                            this.wrapTextInRect(tempCtx, layer.params.text || 'Текст', textX, textY,
+                                               availableWidth, availableHeight, layer.params.fontSize || 16);
+                            tempCtx.restore();
+                        }
+                    }
+                    else if (layer.type === 'line' && layer.points) {
+                        // Convert line coordinates to original image space
+                        const x1_orig = Math.round(layer.points.x1 / currentCanvasScaleX);
+                        const y1_orig = Math.round(layer.points.y1 / currentCanvasScaleY);
+                        const x2_orig = Math.round(layer.points.x2 / currentCanvasScaleX);
+                        const y2_orig = Math.round(layer.points.y2 / currentCanvasScaleY);
+
+                        const x1 = x1_orig - validX;
+                        const y1 = y1_orig - validY;
+                        const x2 = x2_orig - validX;
+                        const y2 = y2_orig - validY;
+
+                        // Проверяем, пересекается ли линия с областью кропа
+                        if ((x1 < 0 && x2 < 0) || (x1 > validWidth && x2 > validWidth) ||
+                            (y1 < 0 && y2 < 0) || (y1 > validHeight && y2 > validHeight)) {
+                            return;
+                        }
+
+                        tempCtx.strokeStyle = layer.points.color;
+                        tempCtx.lineWidth = layer.params.thickness || 2;
+                        tempCtx.beginPath();
+                        tempCtx.moveTo(x1, y1);
+                        tempCtx.lineTo(x2, y2);
+
+                        // Рисуем стрелку на конце
+                        const angle = Math.atan2(y2 - y1, x2 - x1);
+                        const arrowLength = 10;
+                        tempCtx.lineTo(
+                            x2 - arrowLength * Math.cos(angle - Math.PI / 6),
+                            y2 - arrowLength * Math.sin(angle - Math.PI / 6)
+                        );
+                        tempCtx.moveTo(x2, y2);
+                        tempCtx.lineTo(
+                            x2 - arrowLength * Math.cos(angle + Math.PI / 6),
+                            y2 - arrowLength * Math.sin(angle + Math.PI / 6)
+                        );
+
+                        tempCtx.stroke();
+                    }
+                });
+            }
+
+            // Сохраняем состояние для отмены
+            this.addHistoryState();
+
+            // Обновляем размеры основного холста
+            this.canvas.width = validWidth;
+            this.canvas.height = validHeight;
+            this.canvas.style.width = `${validWidth / this.DPR}px`;
+            this.canvas.style.height = `${validHeight / this.DPR}px`;
+
+            // Обновляем размеры selectionOverlay
+            this.selectionOverlay.style.width = `${this.canvas.clientWidth}px`;
+            this.selectionOverlay.style.height = `${this.canvas.clientHeight}px`;
+
+            // Очищаем и рисуем обрезанное изображение
+            this.context.clearRect(0, 0, this.canvas.width, this.canvas.height);
+            this.context.drawImage(tempCanvas, 0, 0);
+
+            // Обновляем исходное изображение
+            this.originalImage = new Image();
+            this.originalImage.src = tempCanvas.toDataURL();
+            this.image = this.originalImage;
+
+            // Сохраняем координаты кропа ДО его удаления из списка слоёв
+            const cropRect = { x: validX, y: validY, width: validWidth, height: validHeight };
+
+            // Пересчитываем координаты всех слоев
+            if (this.layerManager.layers && Array.isArray(this.layerManager.layers)) {
+                this.layerManager.layers.forEach(layer => {
+                    // Пропускаем crop слой при пересчете остальных слоёв
+                    if(layer.id === cropLayer.id) {return;}
+
+                    if (layer.rect) {
+                        // Convert original coordinates back to the new canvas coordinate system
+                        const newCanvasScaleX = this.canvas.width / this.originalImage.width;
+                        const newCanvasScaleY = this.canvas.height / this.originalImage.height;
+
+                        // Validate scale factors
+                        if (newCanvasScaleX <= 0 || newCanvasScaleY <= 0) {
+                            console.error('Invalid new canvas scale factors');
+                            return;
+                        }
+
+                        layer.rect.x = Math.round((Math.round(layer.rect.x / currentCanvasScaleX) - cropRect.x) * newCanvasScaleX);
+                        layer.rect.y = Math.round((Math.round(layer.rect.y / currentCanvasScaleY) - cropRect.y) * newCanvasScaleY);
+
+                        layer.rect.width = Math.round(layer.rect.width / currentCanvasScaleX * newCanvasScaleX);
+                        layer.rect.height = Math.round(layer.rect.height / currentCanvasScaleY * newCanvasScaleY);
+
+                        // Обрезаем слои, выходящие за границы нового изображения
+                        if (layer.rect.x < 0) {
+                            layer.rect.width += layer.rect.x;
+                            layer.rect.x = 0;
+                        }
+                        if (layer.rect.y < 0) {
+                            layer.rect.height += layer.rect.y;
+                            layer.rect.y = 0;
+                        }
+                        if (layer.rect.x + layer.rect.width > this.canvas.width) {
+                            layer.rect.width = this.canvas.width - layer.rect.x;
+                        }
+                        if (layer.rect.y + layer.rect.height > this.canvas.height) {
+                            layer.rect.height = this.canvas.height - layer.rect.y;
+                        }
+                    }
+
+                    if (layer.points) {
+                        // Convert original coordinates back to the new canvas coordinate system
+                        const newCanvasScaleX = this.canvas.width / this.originalImage.width;
+                        const newCanvasScaleY = this.canvas.height / this.originalImage.height;
+
+                        // Validate scale factors
+                        if (newCanvasScaleX <= 0 || newCanvasScaleY <= 0) {
+                            console.error('Invalid new canvas scale factors for points');
+                            return;
+                        }
+
+                        layer.points.x1 = Math.round((Math.round(layer.points.x1 / currentCanvasScaleX) - cropRect.x) * newCanvasScaleX);
+                        layer.points.y1 = Math.round((Math.round(layer.points.y1 / currentCanvasScaleY) - cropRect.y) * newCanvasScaleY);
+                        layer.points.x2 = Math.round((Math.round(layer.points.x2 / currentCanvasScaleX) - cropRect.x) * newCanvasScaleX);
+                        layer.points.y2 = Math.round((Math.round(layer.points.y2 / currentCanvasScaleY) - cropRect.y) * newCanvasScaleY);
+
+                        layer.points.x1 = Math.max(0, Math.min(this.canvas.width, layer.points.x1));
+                        layer.points.y1 = Math.max(0, Math.min(this.canvas.height, layer.points.y1));
+                        layer.points.x2 = Math.max(0, Math.min(this.canvas.width, layer.points.x2));
+                        layer.points.y2 = Math.max(0, Math.min(this.canvas.height, layer.points.y2));
+                    }
+                });
+            }
+
+            const cropIndex = this.layerManager.layers.findIndex(l => l.id === cropLayer.id)
+            if(cropIndex !== -1) {
+                this.layerManager.layers.splice(cropIndex,1);
+                if(this.layerManager.activeLayerIndex === cropIndex) {
+                    this.layerManager.activeLayerIndex = -1;
+                } else if (this.layerManager.activeLayerIndex > cropIndex) {
+                    this.layerManager.activeLayer--;
+                }
+            }
+
+            // Обновляем базовый слой
+            if (this.layerManager.layers.length > 0 && this.layerManager.layers[0].type === 'base') {
+                const baseLayer = this.layerManager.layers[0];
+                // Копируем данные с холста в базовый слой
+                baseLayer.imageData = this.context.getImageData(0, 0, this.canvas.width, this.canvas.height);
+            }
+
+            // Закомментировано так как с этим кодом не правильно работал кроп
+            // this.render();
+
+            // Обновляем панель слоев
+            this.layerManager.updateLayersPanel();
+
+            // Обновляем информацию об изображении
+            const newFile = new File([this.canvas.toDataURL()], "cropped_image.png");
+            this.updateImageInfo(newFile);
+
+            // Сбрасываем активный инструмент
+            this.setActiveTool(null);
+        } catch (error) {
+            console.error('Error during crop operation:', error);
+        }
+    }
+
+    /**
+     * Глубокое слияние объектов
+     * @param {Object} target - Целевой объект
+     * @param {Object} source - Исходный объект для слияния
+     * @returns {Object} - Результат глубокого слияния
+     */
+    deepMerge(target, source) {
+        try {
+            // Проверяем, что оба значения являются объектами
+            if (typeof target !== 'object' || target === null || Array.isArray(target) ||
+                typeof source !== 'object' || source === null || Array.isArray(source)) {
+                return source;
+            }
+
+            // Создаем копию target, чтобы не изменять оригинальный объект
+            const output = { ...target };
+
+            // Проходим по всем ключам в source
+            for (const key in source) {
+                if (source.hasOwnProperty(key)) {
+                    // Если ключ существует в обоих объектах и оба значения являются объектами,
+                    // рекурсивно вызываем deepMerge
+                    if (key in target && typeof target[key] === 'object' && typeof source[key] === 'object' &&
+                        target[key] !== null && source[key] !== null &&
+                        !Array.isArray(target[key]) && !Array.isArray(source[key])) {
+                        output[key] = this.deepMerge(target[key], source[key]);
+                    } else {
+                        // В противном случае, просто присваиваем значение из source
+                        output[key] = source[key];
+                    }
+                }
+            }
+
+            return output;
+        } catch (error) {
+            console.error('Error in deepMerge:', error);
+            // Возвращаем target в случае ошибки, чтобы не потерять данные
+            return { ...target };
+        }
+    }
+
+    /**
+     * Загружает номер версии из manifest.json в корне расширения
+     */
     async loadVersion() {
         // Загрузка номера версии из manifest.json в корне
         try {
@@ -1194,6 +1769,73 @@ export default class ImageEditor {
         } catch (error) {
             console.error('Ошибка при загрузке версии из manifest.json:', error);
             document.getElementById('versionNumber').textContent = 'N/A';
+        }
+    }
+
+    /**
+     * Удаляет все обработчики событий и освобождает ресурсы
+     */
+    destroy() {
+        try {
+            // Удаляем обработчики событий с DOM-элементов
+            document.getElementById('fileBtn')?.removeEventListener('click', this.fileInput.click);
+            this.fileInput?.removeEventListener('change', this.loadImage);
+
+            document.getElementById('saveBtn')?.removeEventListener('click', this.applyCropAndSave);
+            document.getElementById('undoBtn')?.removeEventListener('click', this.undo);
+
+            document.getElementById('cropBtn')?.removeEventListener('click', this.setActiveTool);
+            document.getElementById('blurBtn')?.removeEventListener('click', this.setActiveTool);
+            document.getElementById('highlightBtn')?.removeEventListener('click', this.setActiveTool);
+            document.getElementById('lineBtn')?.removeEventListener('click', this.setActiveTool);
+            document.getElementById('textBtn')?.removeEventListener('click', this.setActiveTool);
+
+            window?.removeEventListener('resize', this.updateCanvasDisplay);
+
+            document.getElementById('layersList')?.removeEventListener('click', this.setActiveLayer);
+            document.removeEventListener('keydown', this.deleteActiveLayer);
+
+            document.removeEventListener('mousemove', this.onMouseMove);
+            document.removeEventListener('mouseup', this.onMouseUp);
+
+            // Удаляем обработчики с selectionOverlay
+            this.selectionOverlay?.removeEventListener('mousedown', this.onOverlayMouseDown);
+            this.selectionOverlay?.removeEventListener('mousemove', this.onOverlayHover);
+
+            // Удаляем обработчики с активного инструмента
+            if (this.activeTool) {
+                this.activeTool.deactivate();
+            }
+
+            // Удаляем обработчики с selectionOverlay для инструментов
+            this.selectionOverlay?.removeEventListener('mousedown', this.boundToolMouseDown);
+            this.selectionOverlay?.removeEventListener('mousemove', this.boundToolMouseMove);
+            this.selectionOverlay?.removeEventListener('mouseup', this.boundToolMouseUp);
+
+            // Очищаем ссылки на DOM-элементы
+            this.canvas = null;
+            this.context = null;
+            this.selectionOverlay = null;
+            this.fileInput = null;
+            this.imageSizeElement = null;
+            this.imageWidthElement = null;
+            this.imageHeightElement = null;
+            this.fileSizeElement = null;
+
+            // Очищаем данные изображения
+            this.image = null;
+            this.originalImage = null;
+
+            // Очищаем историю
+            this.history = [];
+            this.historyPosition = -1;
+
+            // Уничтожаем менеджер слоев
+            this.layerManager?.destroy();
+
+            console.log('ImageEditor destroyed successfully');
+        } catch (error) {
+            console.error('Error during destruction:', error);
         }
     }
 }

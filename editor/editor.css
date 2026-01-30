@@ -143,7 +143,7 @@ button {
 }
 
 #toolSettings {
-    display: none;
+    /* display: none; */
     gap: 15px;
     align-items: center;
     min-width: 520px; /* с учеом всех инструментов */
