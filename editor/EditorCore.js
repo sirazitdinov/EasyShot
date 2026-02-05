@@ -91,10 +91,10 @@ export default class ImageEditor {
         // Хранилище настроек инструментов
         this.toolSettings = {
             // Настройки по умолчанию для каждого инструмента
-            highlight: {color:'#ff0000', thickness: 2},
-            crop: {aspectRatio: 'free'},
-            line: {color:'#ff0000', thickness: 2},
-            blur: {radius: 5}
+            highlight: { color: '#ff0000', thickness: 2 },
+            crop: { aspectRatio: 'free' },
+            line: { color: '#ff0000', thickness: 2 },
+            blur: { radius: 5 }
         }
 
         // UI элементы для отображения настроек
@@ -106,7 +106,7 @@ export default class ImageEditor {
             },
             crop: {},
             blur: {
-                radiusInput:document.getElementById('blurRadius'),
+                radiusInput: document.getElementById('blurRadius'),
                 radiusLabel: document.getElementById('blurRadiusLabel')
             },
             line: {},
@@ -131,11 +131,11 @@ export default class ImageEditor {
     initializeTools() {
         // Создание инструментов
         this.tools = {
-            crop: new CropTool(this,this.settingsElements['crop']),
-            blur: new BlurTool(this,this.settingsElements['blur']),
-            highlight: new HighlightTool(this,this.settingsElements['highlight']),
-            line: new LineTool(this,this.settingsElements['line']),
-            text: new TextTool(this,this.settingsElements['text'])
+            crop: new CropTool(this, this.settingsElements['crop']),
+            blur: new BlurTool(this, this.settingsElements['blur']),
+            highlight: new HighlightTool(this, this.settingsElements['highlight']),
+            line: new LineTool(this, this.settingsElements['line']),
+            text: new TextTool(this, this.settingsElements['text'])
         };
 
         // Текущий активный инструмент
@@ -275,7 +275,7 @@ export default class ImageEditor {
         if (redoBtn) {
             redoBtn.addEventListener('click', () => {
                 if (this.historyManager) {
-                this.historyManager.redo();
+                    this.historyManager.redo();
                 }
             });
         }
@@ -386,10 +386,10 @@ export default class ImageEditor {
                 this.updateImageInfo(file);
 
                 // Обнволение базового слоя после загрузки избражения
-                if(this.layerManager.layers.length > 0 ){
+                if (this.layerManager.layers.length > 0) {
                     const baseLayer = this.layerManager.layers[0];
                     this.context.drawImage(img, 0, 0, this.canvas.width, this.canvas.height);
-                    baseLayer.imageData = this.context.getImageData(0,0, this.canvas.width, this.canvas.height);
+                    baseLayer.imageData = this.context.getImageData(0, 0, this.canvas.width, this.canvas.height);
                     this.layerManager.updateLayersPanel();
                 }
 
@@ -415,7 +415,7 @@ export default class ImageEditor {
      */
     saveImage(format = 'png', quality = 0.9) {
 
-        try{
+        try {
             let canvasToSave = this.canvas;
 
             // Проверяем, что canvas существует
@@ -581,151 +581,274 @@ export default class ImageEditor {
     }
 
     /**
-     * Основной метод рендеринга, отрисовывающий изображение и все слои
-     * @param {Object|null} dirtyRegion - Область для частичной перерисовки (опционально)
+     * Основной метод перерисовки
+     * @param {Object|null} dirtyRegion - { x, y, width, height } для частичного рендера.
      */
     render(dirtyRegion = null) {
-        try {
-            if (!this.image) return;
+        if (!this.image || !this.context || !this.canvas) {
+            return;
+        }
 
-            // Проверяем, что контекст существует
-            if (!this.context) {
-                console.error('Canvas context is not available');
+        try {
+            if (dirtyRegion) {
+                this.context.save();
+                this.context.beginPath();
+                this.context.rect(
+                    dirtyRegion.x,
+                    dirtyRegion.y,
+                    dirtyRegion.width,
+                    dirtyRegion.height
+                );
+                this.context.clip();
+            } else {
+                this.context.clearRect(0, 0, this.canvas.width, this.canvas.height);
+            }
+
+            this.renderBaseImage(dirtyRegion);
+            this.renderRasterLayers(dirtyRegion);
+            this.renderCropOverlay(dirtyRegion);
+            this.renderSelectionHandles(dirtyRegion);
+        } catch (error) {
+            console.error("Error during rendering", error);
+        } finally {
+            if (dirtyRegion) {
+                try {
+                    this.context.restore();
+                } catch {
+                    // ignore restore errors
+                }
+            }
+        }
+    }
+
+    /**
+     * Рисует базовое изображение с учетом dirtyRegion.
+     * @param {Object|null} dirtyRegion
+     */
+    renderBaseImage(dirtyRegion = null) {
+        if (!this.image || !this.context || !this.canvas) return;
+
+        if (dirtyRegion) {
+            this.context.drawImage(
+                this.image,
+                dirtyRegion.x,
+                dirtyRegion.y,
+                dirtyRegion.width,
+                dirtyRegion.height,
+                dirtyRegion.x,
+                dirtyRegion.y,
+                dirtyRegion.width,
+                dirtyRegion.height
+            );
+        } else {
+            this.context.drawImage(
+                this.image,
+                0,
+                0,
+                this.canvas.width,
+                this.canvas.height
+            );
+        }
+    }
+
+    /**
+     * Рендерит растер‑слои (blur, highlight, line, text).
+     * @param {Object|null} dirtyRegion
+     */
+    renderRasterLayers(dirtyRegion = null) {
+        if (!this.layerManager || !Array.isArray(this.layerManager.layers)) return;
+        if (!this.context || !this.canvas) return;
+
+        this.layerManager.layers.forEach(layer => {
+            if (!layer || layer.type === "crop" || layer.type === "base") return;
+            if (layer.visible === false) return;
+
+            // Простейшая оптимизация по dirtyRegion — скипаем слой, если он точно вне области.
+            if (dirtyRegion && layer.rect) {
+                const intersects =
+                    dirtyRegion.x < layer.rect.x + layer.rect.width &&
+                    dirtyRegion.x + dirtyRegion.width > layer.rect.x &&
+                    dirtyRegion.y < layer.rect.y + layer.rect.height &&
+                    dirtyRegion.y + dirtyRegion.height > layer.rect.y;
+                if (!intersects) {
+                    return;
+                }
+            }
+
+            if (layer.type === "blur" && layer.rect) {
+                this.context.save();
+                this.context.filter = `blur(${layer.params?.radius ?? 5}px)`;
+                this.context.drawImage(
+                    this.image,
+                    layer.rect.x,
+                    layer.rect.y,
+                    layer.rect.width,
+                    layer.rect.height,
+                    layer.rect.x,
+                    layer.rect.y,
+                    layer.rect.width,
+                    layer.rect.height
+                );
+                this.context.restore();
                 return;
             }
 
-            // Если задана область изменений, рисуем только её, иначе - весь холст
-            if (dirtyRegion) {
-                // Ограничиваем область рисования
+            if (layer.type === "highlight" && layer.rect) {
                 this.context.save();
-                this.context.beginPath();
-                this.context.rect(dirtyRegion.x, dirtyRegion.y, dirtyRegion.width, dirtyRegion.height);
-                this.context.clip();
-
-                // Рисуем только в указанной области
-                this.context.drawImage(this.image,
-                    dirtyRegion.x, dirtyRegion.y, dirtyRegion.width, dirtyRegion.height,
-                    dirtyRegion.x, dirtyRegion.y, dirtyRegion.width, dirtyRegion.height);
-            } else {
-                // Очистка всего холста
-                this.context.clearRect(0, 0, this.canvas.width, this.canvas.height);
-
-                // 1. Сначала отрисовываем изображение
-                if (this.image) {
-                    this.context.drawImage(this.image, 0, 0, this.canvas.width, this.canvas.height);
-                }
-            }
-
-            // 2. Отрисовка всех видимых слоёв (растровые и векторные)
-            // Растровые слои
-            this.layerManager.redrawAllLayers();
-
-            // Векторные слои
-            this.layerManager.layers.forEach(l => {
-                // if(!l.visible) return;
-
-                if(l.type === 'blur' && l.rect) {
-                    this.context.save();
-                    this.context.filter = `blur(${l.params.radius}px)`;
-                    this.context.drawImage(this.image,
-                        l.rect.x, l.rect.y, l.rect.width, l.rect.height,
-                        l.rect.x, l.rect.y, l.rect.width, l.rect.height);
-                    this.context.restore();
-                }
-
-                if (l.type === 'highlight' && l.rect) {
-                    this.context.strokeStyle = l.params.color;
-                    this.context.lineWidth = l.params.thickness || this.LINE_WIDTH;
-                    this.context.strokeRect(l.rect.x, l.rect.y, l.rect.width, l.rect.height);
-                }
-
-                if (l.type === 'line' && l.points) {
-                    const { x1, y1, x2, y2 } = l.points;
-                    this.context.strokeStyle = l.params.color || '#ff0000';
-                    this.context.lineWidth = l.params.thickness || 2;
-                    this.context.beginPath();
-                    this.context.moveTo(x1, y1);
-                    this.context.lineTo(x2, y2);
-
-                    // Отрисовка стрелки
-                    const ang = Math.atan2(y2 - y1, x2 - x1);
-                    const arr = 10;
-                    this.context.lineTo(x2 - arr * Math.cos(ang - Math.PI / 6), y2 - arr * Math.sin(ang - Math.PI / 6));
-                    this.context.moveTo(x2, y2);
-                    this.context.lineTo(x2 - arr * Math.cos(ang + Math.PI / 6), y2 - arr * Math.sin(ang + Math.PI / 6));
-                    this.context.stroke();
-                }
-
-                if (l.type === 'text' && l.rect) {
-                    this.context.save();
-                    this.context.fillStyle = l.params.color || '#000000';
-                    this.context.font = `${l.params.fontSize || 16}px Arial`;
-                    this.context.textBaseline = 'top';
-                    this.context.textAlign = 'left';
-                    this.wrapTextInRect(
-                        this.context, l.params.text || 'Текст',
-                        l.rect.x, l.rect.y,
-                        l.rect.width, l.rect.height,
-                        l.params.fontSize || 16
-                    );
-                    this.context.restore();
-                }
-            });
-
-            // 3. Отрисовка кроп-затенения (если есть кроп-слой)
-            const cropLayer = this.layerManager.layers.find(l => l.type === 'crop');
-            if (cropLayer && cropLayer.rect) {
-                this.context.save();
-                this.context.fillStyle = 'rgba(0, 0, 0, 0.5)';
-
-                // Верхняя полоса
-                this.context.fillRect(0, 0, this.canvas.width, cropLayer.rect.y);
-                // Нижняя полоса
-                this.context.fillRect(0, cropLayer.rect.y + cropLayer.rect.height,
-                    this.canvas.width, this.canvas.height - cropLayer.rect.y - cropLayer.rect.height);
-                // Левая полоса
-                this.context.fillRect(0, cropLayer.rect.y,
-                    cropLayer.rect.x, cropLayer.rect.height);
-                // Правая полоса
-                this.context.fillRect(cropLayer.rect.x + cropLayer.rect.width, cropLayer.rect.y,
-                    this.canvas.width - cropLayer.rect.x - cropLayer.rect.width, cropLayer.rect.height);
-
-                this.context.restore();
-
-                // Рисуем границу кропа и размеры
-                this.context.strokeStyle = '#ffffff';
-                this.context.lineWidth = 2;
-                this.context.strokeRect(cropLayer.rect.x, cropLayer.rect.y,
-                    cropLayer.rect.width, cropLayer.rect.height);
-
-                this.context.fillStyle = '#ffffff';
-                this.context.font = '14px Arial';
-                this.context.fillText(
-                    `${Helper.formatSize(cropLayer.rect.width)} × ${Helper.formatSize(cropLayer.rect.height)}`,
-                    cropLayer.rect.x - 10,
-                    cropLayer.rect.y - 10
+                this.context.strokeStyle = layer.params?.color ?? "#ff0000";
+                const thickness = layer.params?.thickness ?? this.CONSTANTS?.LINE_WIDTH ?? 2;
+                this.context.lineWidth = thickness;
+                this.context.strokeRect(
+                    layer.rect.x,
+                    layer.rect.y,
+                    layer.rect.width,
+                    layer.rect.height
                 );
+                this.context.restore();
+                return;
             }
 
-            // 4. Отрисовка поверх интерактивных элементов инструментов
-            const activeLayer = this.layerManager.activeLayer;
+            if (layer.type === "line" && layer.points) {
+                const { x1, y1, x2, y2 } = layer.points;
+                this.context.save();
+                this.context.strokeStyle = layer.params?.color ?? "#ff0000";
+                this.context.lineWidth = layer.params?.thickness ?? this.CONSTANTS?.LINE_WIDTH ?? 2;
 
-            // Отрисовка handles для активного слоя
-            if (activeLayer?.rect) {
-                this.drawHandles(this.context, activeLayer.rect);
+                this.context.beginPath();
+                this.context.moveTo(x1, y1);
+                this.context.lineTo(x2, y2);
+
+                const angle = Math.atan2(y2 - y1, x2 - x1);
+                const arrowLength = 10;
+                this.context.lineTo(
+                    x2 - arrowLength * Math.cos(angle - Math.PI / 6),
+                    y2 - arrowLength * Math.sin(angle - Math.PI / 6)
+                );
+                this.context.moveTo(x2, y2);
+                this.context.lineTo(
+                    x2 - arrowLength * Math.cos(angle + Math.PI / 6),
+                    y2 - arrowLength * Math.sin(angle + Math.PI / 6)
+                );
+
+                this.context.stroke();
+                this.context.restore();
+                return;
             }
 
-            // 5. Отрисовка точек для инструмента линии
-            if (activeLayer?.type === 'line' && activeLayer.points) {
-                this.drawLinePoints(this.context, activeLayer.points);
-            }
-
-            // Восстанавливаем контекст, если использовали clipping
-            if (dirtyRegion) {
+            if (layer.type === "text" && layer.rect) {
+                this.context.save();
+                const fontSize = layer.params?.fontSize ?? 16;
+                this.context.fillStyle = layer.params?.color ?? "#000000";
+                this.context.font = `${fontSize}px Arial`;
+                this.context.textBaseline = "top";
+                this.context.textAlign = "left";
+                this.wrapTextInRect(
+                    this.context,
+                    layer.params?.text ?? "",
+                    layer.rect.x,
+                    layer.rect.y,
+                    layer.rect.width,
+                    layer.rect.height,
+                    fontSize
+                );
                 this.context.restore();
             }
-        } catch (error) {
-            console.error('Error during rendering:', error);
+        });
+    }
+
+    /**
+     * Рисует затемнение и рамку crop‑области.
+     * @param {Object|null} dirtyRegion
+     */
+    renderCropOverlay(dirtyRegion = null) {
+        if (!this.layerManager || !this.context || !this.canvas) return;
+        const cropLayer = this.layerManager.layers?.find(l => l.type === "crop");
+        if (!cropLayer || !cropLayer.rect) return;
+
+        const r = cropLayer.rect;
+
+        // Если dirtyRegion не пересекается с cropRect и областями затемнения — можно скипнуть.
+        if (dirtyRegion) {
+            const intersects =
+                dirtyRegion.x < this.canvas.width &&
+                dirtyRegion.x + dirtyRegion.width > 0 &&
+                dirtyRegion.y < this.canvas.height &&
+                dirtyRegion.y + dirtyRegion.height > 0;
+            if (!intersects) {
+                return;
+            }
+        }
+
+        this.context.save();
+        this.context.fillStyle = "rgba(0, 0, 0, 0.5)";
+
+        // верх
+        this.context.fillRect(0, 0, this.canvas.width, r.y);
+        // низ
+        this.context.fillRect(
+            0,
+            r.y + r.height,
+            this.canvas.width,
+            this.canvas.height - r.y - r.height
+        );
+        // слева
+        this.context.fillRect(0, r.y, r.x, r.height);
+        // справа
+        this.context.fillRect(
+            r.x + r.width,
+            r.y,
+            this.canvas.width - r.x - r.width,
+            r.height
+        );
+
+        this.context.restore();
+
+        // рамка и подпись размеров
+        this.context.save();
+        this.context.strokeStyle = "#ffffff";
+        this.context.lineWidth = 2;
+        this.context.strokeRect(r.x, r.y, r.width, r.height);
+
+        this.context.fillStyle = "#ffffff";
+        this.context.font = "14px Arial";
+        const wText = Helper.formatSize(r.width);
+        const hText = Helper.formatSize(r.height);
+        this.context.fillText(
+            `${wText} × ${hText}`,
+            r.x - 10,
+            r.y - 10
+        );
+        this.context.restore();
+    }
+
+    /**
+     * Рисует хэндлы и точки выделения активного слоя.
+     * @param {Object|null} dirtyRegion
+     */
+    renderSelectionHandles(dirtyRegion = null) {
+        if (!this.layerManager || !this.context) return;
+        const activeLayer = this.layerManager.activeLayer;
+        if (!activeLayer) return;
+
+        // Простая проверка: если есть dirtyRegion и есть rect — не рисуем вне dirtyRegion.
+        if (dirtyRegion && activeLayer.rect) {
+            const r = activeLayer.rect;
+            const intersects =
+                dirtyRegion.x < r.x + r.width &&
+                dirtyRegion.x + dirtyRegion.width > r.x &&
+                dirtyRegion.y < r.y + r.height &&
+                dirtyRegion.y + dirtyRegion.height > r.y;
+            if (!intersects) {
+                return;
+            }
+        }
+
+        if (activeLayer.rect) {
+            this.drawHandles(this.context, activeLayer.rect);
+        }
+
+        if (activeLayer.type === "line" && activeLayer.points) {
+            this.drawLinePoints(this.context, activeLayer.points);
         }
     }
 
@@ -915,7 +1038,7 @@ export default class ImageEditor {
                 this.updateLayersPanel();
 
                 if (this.historyManager) {
-                  this.historyManager.beginAtomicOperation('Resize layer');
+                    this.historyManager.beginAtomicOperation('Resize layer');
                 }
                 return;
             }
@@ -1550,7 +1673,7 @@ export default class ImageEditor {
                             const availableHeight = Math.min(layerOrigHeight, validHeight - textY);
 
                             this.wrapTextInRect(tempCtx, layer.params.text || 'Текст', textX, textY,
-                                               availableWidth, availableHeight, layer.params.fontSize || 16);
+                                availableWidth, availableHeight, layer.params.fontSize || 16);
                             tempCtx.restore();
                         }
                     }
@@ -1627,7 +1750,7 @@ export default class ImageEditor {
             if (this.layerManager.layers && Array.isArray(this.layerManager.layers)) {
                 this.layerManager.layers.forEach(layer => {
                     // Пропускаем crop слой при пересчете остальных слоёв
-                    if(layer.id === cropLayer.id) {return;}
+                    if (layer.id === cropLayer.id) { return; }
 
                     if (layer.rect) {
                         // Convert original coordinates back to the new canvas coordinate system
@@ -1688,9 +1811,9 @@ export default class ImageEditor {
             }
 
             const cropIndex = this.layerManager.layers.findIndex(l => l.id === cropLayer.id)
-            if(cropIndex !== -1) {
-                this.layerManager.layers.splice(cropIndex,1);
-                if(this.layerManager.activeLayerIndex === cropIndex) {
+            if (cropIndex !== -1) {
+                this.layerManager.layers.splice(cropIndex, 1);
+                if (this.layerManager.activeLayerIndex === cropIndex) {
                     this.layerManager.activeLayerIndex = -1;
                 } else if (this.layerManager.activeLayerIndex > cropIndex) {
                     this.layerManager.activeLayer--;
