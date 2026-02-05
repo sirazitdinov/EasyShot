@@ -7,6 +7,7 @@ import LineTool from './Tools/LineTool.js';
 import TextTool from './Tools/TextTool.js';
 import ToolSettingsUI from './Tools/ToolSettingsUI.js';
 import LayerManager from './LayerManager.js';
+import HistoryManager from './HistoryManager.js';
 import Helper from './Helper.js';
 
 export default class ImageEditor {
@@ -19,6 +20,10 @@ export default class ImageEditor {
         this.initializeTools();
         this.initializeConstants();
         this.initializeState();
+
+        this.boundUndoClick = () => {
+            if (this.historyManager) this.historyManager.undo();
+        };
 
         // Инициализация
         this.init();
@@ -67,9 +72,13 @@ export default class ImageEditor {
      */
     initializeHistory() {
         // История для отмены/повтора
-        this.history = [];
-        this.historyPosition = -1;
-        this.MAX_HISTORY_SIZE = 50; // Максимальное количество состояний в истории
+        this.historyManager = new HistoryManager(this, {
+            maxHistory: 50,
+            deduplicate: true,
+        });
+        // this.history = [];
+        // this.historyPosition = -1;
+        // this.MAX_HISTORY_SIZE = 50; // Максимальное количество состояний в истории
     }
 
     /**
@@ -191,7 +200,10 @@ export default class ImageEditor {
         this.canvas.height = 600;
         this.context.fillStyle = '#fff';
         this.context.fillRect(0, 0, this.canvas.width, this.canvas.height);
-        this.addHistoryState();
+        if (this.historyManager) {
+            this.historyManager.clear();
+            this.historyManager.commit('Initial canvas');
+        }
     }
 
     /**
@@ -255,9 +267,18 @@ export default class ImageEditor {
         });
 
         // Отмена действия
-        document.getElementById('undoBtn').addEventListener('click', () => {
-            this.undo();
-        });
+        const undoBtn = document.getElementById('undoBtn');
+        if (undoBtn) undoBtn.addEventListener('click', this.boundUndoClick);
+
+        // Повторить действие
+        const redoBtn = document.getElementById('redoBtn');
+        if (redoBtn) {
+            redoBtn.addEventListener('click', () => {
+                if (this.historyManager) {
+                this.historyManager.redo();
+                }
+            });
+        }
 
         // Кнопки инструментов
         document.getElementById('cropBtn').addEventListener('click', () => {
@@ -315,44 +336,6 @@ export default class ImageEditor {
     }
 
     /**
-     * Добавляет текущее состояние холста в историю для возможности отмены/повтора
-     * Также ограничивает размер истории до MAX_HISTORY_SIZE
-     */
-    addHistoryState() {
-        // Сохранение текущего состояния для отмены/повтора
-        const currentState = this.canvas.toDataURL();
-        // Обрезаем историю, если были отменены действия
-        if (this.historyPosition < this.history.length - 1) {
-            this.history = this.history.slice(0, this.historyPosition + 1);
-        }
-        this.history.push(currentState);
-
-        // Ограничиваем размер истории до MAX_HISTORY_SIZE
-        if (this.history.length > this.MAX_HISTORY_SIZE) {
-            this.history = this.history.slice(-this.MAX_HISTORY_SIZE);
-            this.historyPosition = this.history.length - 1;
-        } else {
-            this.historyPosition = this.history.length - 1;
-        }
-    }
-
-    /**
-     * Отменяет последнее действие, восстанавливая предыдущее состояние из истории
-     */
-    undo() {
-        if (this.historyPosition > 0) {
-            this.historyPosition--;
-            const img = new Image();
-            img.onload = () => {
-                this.context.clearRect(0, 0, this.canvas.width, this.canvas.height);
-                this.context.drawImage(img, 0, 0);
-                this.updateLayersFromCanvas();
-            };
-            img.src = this.history[this.historyPosition];
-        }
-    }
-
-    /**
      * Загружает изображение в редактор
      * @param {File} file - Файл изображения для загрузки
      */
@@ -390,8 +373,6 @@ export default class ImageEditor {
                 this.image = img;
 
                 // Установка размеров холста
-                // this.canvas.width = img.width;
-                // this.canvas.height = img.height;
 
                 // Обновляем размеры selectionOverlay сразу после изменения canvas
                 this.selectionOverlay.style.width = `${this.canvas.clientWidth}px`;
@@ -413,8 +394,10 @@ export default class ImageEditor {
                 }
 
                 // Сброс истории
-                this.history = [this.canvas.toDataURL()];
-                this.historyPosition = 0;
+                if (this.historyManager) {
+                    this.historyManager.clear();
+                    this.historyManager.commit('Load image');
+                }
 
                 // Инициализация слоев
                 // this.initLayers();
@@ -588,7 +571,10 @@ export default class ImageEditor {
     redrawCanvas() {
         try {
             this.layerManager.redrawAllLayers();
-            this.addHistoryState();
+            // Или можно вообще убрать
+            if (this.historyManager) {
+                this.historyManager.commit('Redraw canvas');
+            }
         } catch (error) {
             console.error('Error redrawing canvas:', error);
         }
@@ -835,7 +821,9 @@ export default class ImageEditor {
                 e.preventDefault();
                 const newText = prompt('Введите текст:', hit.params.text || '');
                 if (newText !== null) {
-                    this.addHistoryState();
+                    if (this.historyManager) {
+                        this.historyManager.commit('Edit text');
+                    }
                     hit.params.text = newText;
                     this.render();
                     this.updateLayersPanel();
@@ -879,6 +867,10 @@ export default class ImageEditor {
                 };
                 this.selectionOverlay.className = `resize-${handleHit}`;
                 this.updateLayersPanel();
+
+                if (this.historyManager) {
+                    this.historyManager.beginAtomicOperation('Resize layer');
+                }
                 return;
             }
 
@@ -900,6 +892,10 @@ export default class ImageEditor {
                     };
                     this.selectionOverlay.style.cursor = 'move';
                     this.updateLayersPanel();
+
+                    if (this.historyManager) {
+                        this.historyManager.beginAtomicOperation('Resize layer');
+                    }
                     return;
                 }
             }
@@ -917,6 +913,10 @@ export default class ImageEditor {
                 this.selectionOverlay.className = 'move';
                 this.selectionOverlay.style.cursor = 'move';
                 this.updateLayersPanel();
+
+                if (this.historyManager) {
+                  this.historyManager.beginAtomicOperation('Resize layer');
+                }
                 return;
             }
 
@@ -975,6 +975,10 @@ export default class ImageEditor {
                         ? { x1: coords.x, y1: coords.y, x2: coords.x, y2: coords.y }
                         : { x: coords.x, y: coords.y, width: 0, height: 0 }
                 };
+
+                if (this.historyManager) {
+                    this.historyManager.beginAtomicOperation('Resize layer');
+                }
             }
         } catch (error) {
             console.error('Error in onOverlayMouseDown:', error);
@@ -1058,12 +1062,17 @@ export default class ImageEditor {
     onMouseUp(e) {
         try {
             if (this.dragState) {
-                this.addHistoryState(); // после завершения
+                if (this.historyManager) {
+                    this.historyManager.endAtomicOperation();
+                }
+                this.dragState = null;
             }
-            this.dragState = null;
+
             this.selectionOverlay.className = '';
             this.selectionOverlay.style.cursor = 'default';
+
             this.render();
+            this.updateLayersPanel();
         } catch (error) {
             console.error('Error in onMouseUp:', error);
         }
@@ -1417,17 +1426,11 @@ export default class ImageEditor {
             tempCanvas.width = validWidth;
             tempCanvas.height = validHeight;
 
+            // 1. Рисуем оригинальное изображение в области кропа
             tempCtx.drawImage(
                 this.originalImage,
                 validX, validY, validWidth, validHeight,
                 0, 0, validWidth, validHeight
-            );
-
-            // 1. Рисуем основное изображение (без масштабирования, 1:1) в cropped области
-            tempCtx.drawImage(
-                this.originalImage, // используем оригинальное изображение, а не текущий холст
-                validX, validY, validWidth, validHeight,  // Source: x, y, width, height from original image
-                0, 0, validWidth, validHeight             // Destination: x, y, width, height on new canvas
             );
 
             // 2. Применяем эффекты (blur, highlight, line, text) только к видимым частям в области кропа
@@ -1594,9 +1597,11 @@ export default class ImageEditor {
             }
 
             // Сохраняем состояние для отмены
-            this.addHistoryState();
+            if (this.historyManager) {
+                this.historyManager.beginAtomicOperation('Move/resize/create layer');
+            }
 
-            // Обновляем размеры основного холста
+            // 3. Обновляем основной canvas и оригинальное изображение
             this.canvas.width = validWidth;
             this.canvas.height = validHeight;
             this.canvas.style.width = `${validWidth / this.DPR}px`;
@@ -1705,6 +1710,10 @@ export default class ImageEditor {
             // Обновляем панель слоев
             this.layerManager.updateLayersPanel();
 
+            if (this.historyManager) {
+                this.historyManager.commit('Apply crop');
+            }
+
             // Обновляем информацию об изображении
             const newFile = new File([this.canvas.toDataURL()], "cropped_image.png");
             this.updateImageInfo(newFile);
@@ -1782,7 +1791,10 @@ export default class ImageEditor {
             this.fileInput?.removeEventListener('change', this.loadImage);
 
             document.getElementById('saveBtn')?.removeEventListener('click', this.applyCropAndSave);
-            document.getElementById('undoBtn')?.removeEventListener('click', this.undo);
+
+            const undoBtn = document.getElementById('undoBtn');
+            if (undoBtn) undoBtn.removeEventListener('click', this.boundUndoClick);
+            // document.getElementById('undoBtn')?.removeEventListener('click', this.undo);
 
             document.getElementById('cropBtn')?.removeEventListener('click', this.setActiveTool);
             document.getElementById('blurBtn')?.removeEventListener('click', this.setActiveTool);

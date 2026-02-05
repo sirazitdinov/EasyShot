@@ -61,7 +61,7 @@ export default class LayerManager {
         this.activeLayerIndex = this.layers.length - 1;
         this.updateLayersPanel();
         this.editor.render(); // или this.notifyRender()
-        this.editor.addHistoryState(); // по договорённости — вызов из EditorCore предпочтительнее
+        // this.editor.addHistoryState(); // по договорённости — вызов из EditorCore предпочтительнее
         return layer;
     }
 

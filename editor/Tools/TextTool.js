@@ -18,6 +18,7 @@ export default class TextTool extends BaseTool {
     }
 
     activate() {
+        this.overlay.classList.add('text-mode');
         super.activate();
         const colorInput = document.getElementById('textColor');
         const sizeInput = document.getElementById('textSize');
@@ -27,7 +28,7 @@ export default class TextTool extends BaseTool {
 
     deactivate() {
         super.deactivate();
-        // this.overlay.classList.remove('highlight-mode');
+        this.overlay.classList.remove('text-mode');
         this.editor.updateToolbarButtons();
     }
 
@@ -56,28 +57,30 @@ export default class TextTool extends BaseTool {
 
     setupOverlay() {
         super.setupOverlay();
-        this.overlay.style.cursor = 'crosshair';
-        this.overlay.style.border = '2px dashed #000';
-        this.overlay.style.boxSizing = 'border-box';
-        this.overlay.style.backgroundColor = 'rgba(0,0,0,0.05)';
+        // this.overlay.style.cursor = 'crosshair';
+        // this.overlay.style.border = '2px dashed #000';
+        // this.overlay.style.boxSizing = 'border-box';
+        // this.overlay.style.backgroundColor = 'rgba(0,0,0,0.05)';
     }
 
-    // handleMouseDown(event) {
-    //     if (!this.isActive) return;
-    //     const coords = this.getCanvasCoords(event);
-    //     this.startPoint = { x: coords.x, y: coords.y };
-    //     this.currentLayer = {
-    //         type: 'text',
-    //         rect: { x: coords.x, y: coords.y, width: 200, height: this.fontSize * 1.5 },
-    //         params: {
-    //             text: 'Текст',
-    //             color: this.color,
-    //             fontSize: this.fontSize
-    //         }
-    //     };
-    //     this.isDrawing = true;
-    //     this.editor.addHistoryState();
-    // }
+    handleMouseDown(event) {
+        if (!this.isActive) return;
+        const coords = this.getCanvasCoords(event);
+        this.startPoint = { x: coords.x, y: coords.y };
+        this.currentLayer = {
+            type: 'text',
+            rect: { x: coords.x, y: coords.y, width: 200, height: this.fontSize * 1.5 },
+            params: {
+                text: 'Текст',
+                color: this.color,
+                fontSize: this.fontSize
+            }
+        };
+        this.isDrawing = true;
+        if (hit || newLayer) {
+            this.historyManager.beginAtomicOperation('Move/resize layer');
+        }
+    }
 
     // handleMouseMove(event) {
     //     if (!this.isActive || !this.isDrawing) return;
@@ -88,29 +91,29 @@ export default class TextTool extends BaseTool {
     //     this.updateOverlay();
     // }
 
-    // handleMouseUp(event) {
-    //     if (!this.isActive || !this.isDrawing) return;
-    //     this.isDrawing = false;
+    handleMouseUp(event) {
+        if (!this.isActive || !this.isDrawing) return;
+        this.isDrawing = false;
 
-    //     this.editor.addLayer(this.currentLayer);
-    //     this.editor.setActiveLayer(this.currentLayer);
+        this.editor.addLayer(this.currentLayer);
+        this.editor.setActiveLayer(this.currentLayer);
 
-    //     // Двойной клик → редактирование текста
-    //     setTimeout(() => {
-    //         const rect = this.canvas.getBoundingClientRect();
-    //         const clickX = (event.clientX - rect.left) * (this.canvas.width / rect.width);
-    //         const clickY = (event.clientY - rect.top) * (this.canvas.height / rect.height);
-    //         const layer = this.currentLayer;
-    //         if (layer.rect &&
-    //             clickX >= layer.rect.x && clickX <= layer.rect.x + layer.rect.width &&
-    //             clickY >= layer.rect.y && clickY <= layer.rect.y + layer.rect.height) {
-    //             this.editText(layer);
-    //         }
-    //     }, 50);
+        // Двойной клик → редактирование текста
+        setTimeout(() => {
+            const rect = this.canvas.getBoundingClientRect();
+            const clickX = (event.clientX - rect.left) * (this.canvas.width / rect.width);
+            const clickY = (event.clientY - rect.top) * (this.canvas.height / rect.height);
+            const layer = this.currentLayer;
+            if (layer.rect &&
+                clickX >= layer.rect.x && clickX <= layer.rect.x + layer.rect.width &&
+                clickY >= layer.rect.y && clickY <= layer.rect.y + layer.rect.height) {
+                this.editText(layer);
+            }
+        }, 50);
 
-    //     this.cleanupOverlay();
-    //     this.setupOverlay();
-    // }
+        this.cleanupOverlay();
+        this.setupOverlay();
+    }
 
     updateOverlay() {
         if (!this.currentLayer?.rect) return;
@@ -161,7 +164,11 @@ export default class TextTool extends BaseTool {
     editText(layer) {
         const newText = prompt('Введите текст:', layer.params.text || '');
         if (newText !== null) {
-            this.editor.addHistoryState();
+            if (this.editor.historyManager) {
+                this.editor.historyManager.clear();
+                this.editor.historyManager.commit('Initial canvas');
+            }
+
             layer.params.text = newText;
             this.editor.render();
         }

@@ -38,7 +38,7 @@ export default class HighlightTool extends BaseTool {
     deactivate() {
         super.deactivate();
         this.overlay.classList.remove('highlight-mode');
-        this.editor.updateToolbarButtons(this.name);
+        this.editor.updateToolbarButtons();
     }
 
     getUISettingsConfig() {

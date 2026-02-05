@@ -80,45 +80,6 @@ export default class LineTool extends BaseTool {
         this.linePreview = this.overlay.querySelector('#linePreview');
     }
 
-    // handleMouseDown(event) {
-    //     if (!this.isActive) return;
-    //     const coords = this.getCanvasCoords(event);
-    //     this.startPoint = { x: coords.x, y: coords.y };
-    //     this.currentLayer = {
-    //         type: 'line',
-    //         points: { x1: coords.x, y1: coords.y, x2: coords.x, y2: coords.y, color: this.color }
-    //     };
-    //     this.isDrawing = true;
-    //     this.editor.addHistoryState();
-    // }
-
-    // handleMouseMove(event) {
-    //     if (!this.isActive || !this.isDrawing) return;
-    //     const coords = this.getCanvasCoords(event);
-    //     this.currentLayer.points.x2 = coords.x;
-    //     this.currentLayer.points.y2 = coords.y;
-    //     this.updateOverlay();
-    // }
-
-    // handleMouseUp(event) {
-    //     if (!this.isActive || !this.isDrawing) return;
-    //     this.isDrawing = false;
-
-    //     const dx = this.currentLayer.points.x2 - this.currentLayer.points.x1;
-    //     const dy = this.currentLayer.points.y2 - this.currentLayer.points.y1;
-    //     const dist = Math.sqrt(dx * dx + dy * dy);
-    //     if (dist < 10) {
-    //         this.cancelOperation();
-    //         return;
-    //     }
-
-    //     this.editor.addLayer(this.currentLayer);
-    //     this.editor.setActiveLayer(this.currentLayer);
-
-    //     this.cleanupOverlay();
-    //     this.setupOverlay();
-    // }
-
     updateOverlay() {
         if (!this.linePreview || !this.currentLayer?.points) return;
         const { x1, y1, x2, y2 } = this.currentLayer.points;

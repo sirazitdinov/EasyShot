@@ -108,25 +108,22 @@ export default class HistoryManager {
     captureState(label = '') {
         const canvas = this.editor.canvas;
         const ctx = this.editor.context;
+        const layers = this.editor.layerManager?.layers || [];
 
         return {
-            timestamp: Date.now(),
-            label,
-            // imageData — эффективнее, чем DataURL
-            imageData: ctx.getImageData(0, 0, canvas.width, canvas.height),
-            // Опционально: состояние слоёв (если они не полностью покрыты imageData)
-            layers: this.editor.layers.map(l => ({
-                id: l.id,
-                type: l.type,
-                visible: l.visible,
-                // Только параметры — не imageData, чтобы не дублировать
-                rect: l.rect ? { ...l.rect } : null,
-                points: l.points ? { ...l.points } : null,
-                params: l.params ? { ...l.params } : null
-            })),
-            // Опц. активный инструмент, активный слой и т.д.
-            activeLayerId: this.editor.activeLayer?.id || null,
-            activeToolName: this.editor.activeTool?.name || null
+        timestamp: Date.now(),
+        label,
+        imageData: ctx.getImageData(0, 0, canvas.width, canvas.height),
+        layers: layers.map(l => ({
+            id: l.id,
+            type: l.type,
+            visible: l.visible,
+            rect: l.rect ? { ...l.rect } : null,
+            points: l.points ? { ...l.points } : null,
+            params: l.params ? { ...l.params } : null
+        })),
+        activeLayerId: this.editor.layerManager?.activeLayer?.id || null,
+        activeToolName: this.editor.activeTool?.name || null
         };
     }
 
@@ -203,33 +200,31 @@ export default class HistoryManager {
         if (!state?.imageData) return;
 
         const { imageData, layers, activeLayerId, activeToolName } = state;
+        const layerManager = this.editor.layerManager;
 
         // 1. Восстанавливаем пиксели
         this.editor.context.putImageData(imageData, 0, 0);
 
         // 2. Восстанавливаем параметры слоёв (rect/points/params), но НЕ imageData — они уже на холсте
-        if (Array.isArray(layers) && layers.length === this.editor.layers.length) {
-            this.editor.layers.forEach((layer, i) => {
-                const saved = layers[i];
-                if (saved) {
-                    layer.rect = saved.rect ? { ...saved.rect } : null;
-                    layer.points = saved.points ? { ...saved.points } : null;
-                    layer.params = saved.params ? { ...saved.params } : null;
-                    layer.visible = saved.visible;
-                }
-            });
+        if (layerManager && Array.isArray(layers) && layers.length === layerManager.layers.length) {
+        layerManager.layers.forEach((layer, i) => {
+            const saved = layers[i];
+            if (saved) {
+            layer.rect = saved.rect ? { ...saved.rect } : null;
+            layer.points = saved.points ? { ...saved.points } : null;
+            layer.params = saved.params ? { ...saved.params } : null;
+            layer.visible = saved.visible;
+            }
+        });
         }
 
         // 3. Активный слой
+        if (layerManager) {
         if (activeLayerId) {
-            const idx = this.editor.layers.findIndex(l => l.id === activeLayerId);
-            if (idx !== -1) {
-                this.editor.activeLayerIndex = idx;
-                this.editor.activeLayer = this.editor.layers[idx];
-            }
+            layerManager.setActiveLayerById(activeLayerId);
         } else {
-            this.editor.activeLayer = null;
-            this.editor.activeLayerIndex = -1;
+            layerManager.activeLayerIndex = -1;
+        }
         }
 
         // 4. Активный инструмент (опционально — можно оставить на усмотрение EditorCore)
@@ -253,51 +248,3 @@ export default class HistoryManager {
         return this.history[this.position].label || `Шаг ${this.position}`;
     }
 }
-
-
-// 1. Импортируйте и создайте экземпляр:
-// import HistoryManager from './HistoryManager.js';
-// // ...
-// this.historyManager = new HistoryManager(this);
-
-// 2. Замените методы в EditorCore:
-
-// Было:
-// this.history = [];
-// this.historyPosition = -1;
-// this.addHistoryState();
-
-// // Станет:
-// // → удалите history/historyPosition
-// // → используйте:
-// this.historyManager.commit('Загрузка изображения');
-// this.historyManager.undo();
-// this.historyManager.redo();
-
-// 3. В initEventListeners() замените кнопки:
-// document.getElementById('undoBtn').addEventListener('click', () => {
-//     this.historyManager.undo();
-// });
-// document.getElementById('redoBtn').addEventListener('click', () => {
-//     this.historyManager.redo();
-// });
-
-// 4. Для drag-операций (например, в onOverlayMouseDown / onMouseUp):
-// onOverlayMouseDown(e) {
-//     // ...
-//     if (/* создаём или двигаем */) {
-//         this.historyManager.beginAtomicOperation('Перемещение объекта');
-//     }
-// }
-
-// onMouseUp(e) {
-//     if (this.dragState) {
-//         this.historyManager.endAtomicOperation();
-//     }
-//     this.dragState = null;
-//     // ...
-// }
-
-// 5. В loadImage():
-// this.historyManager.clear();
-// this.historyManager.commit('Загрузка изображения');

@@ -69,7 +69,7 @@ export default class BaseTool {
      * Настраивает overlay для текущего инструмента
      */
     setupOverlay() {
-        this.overlay.classList.remove('active', 'crop-mode', 'move', 'highlight-mode');
+        this.overlay.classList.remove('active', 'crop-mode', 'move', 'highlight-mode', 'text-mode');
         this.overlay.className = '';
         this.overlay.style.display = 'block';
         this.overlay.innerHTML = '';
@@ -143,7 +143,10 @@ export default class BaseTool {
      */
     saveHistoryState() {
         // Сохраняем текущее состояние холста
-        this.editor.addHistoryState();
+        // временный вариант
+        if (this.editor.historyManager) {
+            this.editor.historyManager.commit(`${this.name} tool action`);
+        }
     }
 
     /**
@@ -152,10 +155,16 @@ export default class BaseTool {
      * @returns {Object} {x, y}
      */
     getCanvasCoords(event) {
+        // Используем единый метод из EditorCore, чтобы координаты совпадали
+        if (this.editor && typeof this.editor.getCanvasCoords === 'function') {
+            return this.editor.getCanvasCoords(event);
+        }
+
+        // fallback на старое поведение (на всякий случай)
         const rect = this.canvas.getBoundingClientRect();
         return {
-            x: event.clientX - rect.left,
-            y: event.clientY - rect.top
+            x: (event.clientX - rect.left) * (this.canvas.width / this.canvas.clientWidth),
+            y: (event.clientY - rect.top) * (this.canvas.height / this.canvas.clientHeight),
         };
     }
 
