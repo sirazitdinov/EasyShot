@@ -1046,63 +1046,93 @@ export default class ImageEditor {
             // 7. Создание нового слоя — только если активен инструмент и он поддерживает прямоугольники/линии
             if (this.activeTool?.supportsCreation) {
                 const type = this.activeTool.name;
-                let newLayer;
+                let initialOptions = {};
 
                 switch (type) {
                     case 'crop':
+                        // Не даём создать второй crop-слой
                         if (this.layerManager.layers.some(l => l.type === 'crop')) return;
-                        newLayer = {
+
+                        initialOptions = {
                             type: 'crop',
                             rect: { x: coords.x, y: coords.y, width: 0, height: 0 },
                             params: {}
                         };
                         break;
+
                     case 'blur':
-                        newLayer = {
+                        initialOptions = {
                             type: 'blur',
                             rect: { x: coords.x, y: coords.y, width: 0, height: 0 },
-                            params: { radius: 5 }
+                            params: { radius: this.tools.blur.settings?.radius ?? 5 }
                         };
                         break;
+
                     case 'highlight':
-                        newLayer = {
+                        initialOptions = {
                             type: 'highlight',
                             rect: { x: coords.x, y: coords.y, width: 0, height: 0 },
-                            params: { color: this.activeTool.color, thickness: this.activeTool.thickness }
+                            params: {
+                                color: this.tools.highlight.settings?.color ?? '#ff0000',
+                                thickness: this.tools.highlight.settings?.thickness ?? 2
+                            }
                         };
                         break;
+
                     case 'line':
-                        newLayer = {
+                        initialOptions = {
                             type: 'line',
-                            points: { x1: coords.x, y1: coords.y, x2: coords.x, y2: coords.y, color: '#ff0000' },
-                            params: { color: this.activeTool.color, thickness: this.activeTool.thickness }
+                            points: {
+                                x1: coords.x, y1: coords.y,
+                                x2: coords.x, y2: coords.y
+                            },
+                            params: {
+                                color: this.tools.line.settings?.color ?? '#ff0000',
+                                thickness: this.tools.line.settings?.thickness ?? 2
+                            }
                         };
                         break;
+
                     case 'text':
-                        newLayer = {
+                        initialOptions = {
                             type: 'text',
-                            rect: { x: coords.x, y: coords.y, width: 200, height: 50 },
-                            params: { text: 'Текст', color: '#000000', fontSize: 16 }
+                            rect: {
+                                x: coords.x,
+                                y: coords.y,
+                                width: 200,
+                                height: (this.tools.text.settings?.fontSize ?? 16) * 1.5
+                            },
+                            params: {
+                                text: '',
+                                color: this.tools.text.settings?.color ?? '#000000',
+                                fontSize: this.tools.text.settings?.fontSize ?? 16
+                            }
                         };
                         break;
+
                     default:
                         return;
                 }
 
-                this.addLayer(newLayer);
+                const newLayer = this.layerManager.createLayerObject(initialOptions.type, initialOptions);
+                const created = this.addLayer(newLayer);
+
                 this.dragState = {
                     start: coords,
-                    layer: newLayer,
+                    layer: created,
                     handle: type === 'line' ? 'x2' : 'create',
                     orig: type === 'line'
-                        ? { x1: coords.x, y1: coords.y, x2: coords.x, y2: coords.y }
-                        : { x: coords.x, y: coords.y, width: 0, height: 0 }
+                        ? { ...created.points }
+                        : { ...created.rect }
                 };
 
                 if (this.historyManager) {
                     this.historyManager.beginAtomicOperation('Resize layer');
                 }
+
+                return;
             }
+
         } catch (error) {
             console.error('Error in onOverlayMouseDown:', error);
         }

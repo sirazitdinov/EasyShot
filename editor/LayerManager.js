@@ -10,6 +10,16 @@
  * - перерисовку слоёв (через вызов render)
  * - взаимодействие с историей (по запросу EditorCore)
  */
+
+/**
+ * @typedef {Object} EditorLayer
+ * @property {string} id
+ * @property {string} type - 'base' | 'crop' | 'blur' | 'highlight' | 'line' | 'text'
+ * @property {boolean} visible
+ * @property {{x:number,y:number,width:number,height:number}|null} rect
+ * @property {{x1:number,y1:number,x2:number,y2:number}|null} points
+ * @property {Object} params
+ */
 export default class LayerManager {
     constructor(editor) {
         this.editor = editor;
@@ -30,7 +40,7 @@ export default class LayerManager {
     createBaseLayer() {
         const baseLayer = {
             id: 'layer-' + Date.now(),
-            type: 'изображение',
+            type: 'base',
             visible: true,
             imageData: this.editor.context.getImageData(
                 0, 0, this.editor.canvas.width, this.editor.canvas.height
@@ -40,6 +50,67 @@ export default class LayerManager {
         this.activeLayerIndex = 0;
     }
 
+    /**
+     * @param {string} type
+     * @param {Partial<EditorLayer>} options
+     * @returns {EditorLayer}
+     */
+    createLayerObject(type, options = {}) {
+        const id = options.id || 'layer-' + Date.now();
+
+        const layer = {
+            id,
+            type,
+            visible: options.visible !== undefined ? options.visible : true,
+            rect: options.rect || null,
+            points: options.points || null,
+            params: options.params || {}
+        };
+
+        // Значения по умолчанию по типам
+        switch (type) {
+            case 'crop':
+                if (!layer.rect) {
+                    layer.rect = { x: 0, y: 0, width: 0, height: 0 };
+                }
+                break;
+            case 'blur':
+                if (!layer.rect) {
+                    layer.rect = { x: 0, y: 0, width: 0, height: 0 };
+                }
+                layer.params.radius = layer.params.radius ?? 5;
+                break;
+            case 'highlight':
+                if (!layer.rect) {
+                    layer.rect = { x: 0, y: 0, width: 0, height: 0 };
+                }
+                layer.params.color = layer.params.color ?? '#ff0000';
+                layer.params.thickness = layer.params.thickness ?? 2;
+                break;
+            case 'line':
+                if (!layer.points) {
+                    layer.points = { x1: 0, y1: 0, x2: 0, y2: 0 };
+                }
+                layer.params.color = layer.params.color ?? '#ff0000';
+                layer.params.thickness = layer.params.thickness ?? 2;
+                break;
+            case 'text':
+                if (!layer.rect) {
+                    layer.rect = { x: 0, y: 0, width: 200, height: 50 };
+                }
+                layer.params.text = layer.params.text ?? '';
+                layer.params.color = layer.params.color ?? '#000000';
+                layer.params.fontSize = layer.params.fontSize ?? 16;
+                break;
+            default:
+                // base/изображение и прочее — оставляем как есть
+                break;
+        }
+
+        return layer;
+    }
+
+    /** @returns {EditorLayer|null} */
     get activeLayer() {
         return this.layers[this.activeLayerIndex] ?? null;
     }
@@ -55,14 +126,17 @@ export default class LayerManager {
         return this.layers.find(l => l.id === id) || null;
     }
 
+    /** @param {EditorLayer} layer */
     addLayer(layer) {
-        layer.id = layer.id || 'layer-' + Date.now();
-        this.layers.push(layer);
+        // Позволяем передавать либо уже готовый layer, либо лишь { type, rect, params }
+        const normalizedLayer = this.createLayerObject(layer.type, layer);
+
+        this.layers.push(normalizedLayer);
         this.activeLayerIndex = this.layers.length - 1;
         this.updateLayersPanel();
-        this.editor.render(); // или this.notifyRender()
-        // this.editor.addHistoryState(); // по договорённости — вызов из EditorCore предпочтительнее
-        return layer;
+        this.editor.render();
+
+        return normalizedLayer;
     }
 
     removeLayer(layer) {
