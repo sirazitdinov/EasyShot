@@ -211,25 +211,59 @@ export default class ImageEditor {
      * @param {Object} tool - Инструмент, который нужно установить как активный
      */
     setActiveTool(tool) {
-        // Деактивируем предыдущий активный инструмент и прослущивание событий
+        if (this.activeTool === tool) return;
+
+        // 1. Деактивируем предыдущий инструмент
         if (this.activeTool) {
-            this.selectionOverlay.style.pointerEvents = 'auto';
-            this.selectionOverlay.removeEventListener('mousedown', this.boundToolMouseDown);
-            this.selectionOverlay.removeEventListener('mousemove', this.boundToolMouseMove);
-            this.selectionOverlay.removeEventListener('mouseup', this.boundToolMouseUp);
-            this.activeTool.deactivate();
+            try {
+                // Дадим инструменту убрать свои overlay/preview
+                if (typeof this.activeTool.cleanupOverlay === 'function') {
+                    this.activeTool.cleanupOverlay();
+                }
+                if (typeof this.activeTool.deactivate === 'function') {
+                    this.activeTool.deactivate();
+                }
+            } catch (error) {
+                console.error('Error deactivating tool', error);
+            }
         }
 
-        this.activeTool = tool;
+        // 2. Назначаем новый инструмент
+        this.activeTool = tool || null;
 
-        if (tool) {
-            tool.activate();
-            // Отрисовываем элементы настроек активного инстурмента
-            this.toolSettingsUI.renderSettings(tool);
-            this.updateToolbarButtons();
-        } else {
-            this.updateToolbarButtons();
+        // 3. Настраиваем overlay под новый инструмент
+        if (this.selectionOverlay) {
+            if (this.activeTool) {
+                try {
+                    if (typeof this.activeTool.setupOverlay === 'function') {
+                        this.activeTool.setupOverlay(this.selectionOverlay);
+                    }
+                    if (typeof this.activeTool.activate === 'function') {
+                        this.activeTool.activate();
+                    }
+                    if (typeof this.activeTool.updateOverlay === 'function') {
+                        this.activeTool.updateOverlay();
+                    }
+                } catch (error) {
+                    console.error('Error activating tool', error);
+                }
+                this.selectionOverlay.style.pointerEvents = 'auto';
+            } else {
+                this.selectionOverlay.style.pointerEvents = 'none';
+            }
         }
+
+        // 4. Обновляем UI настроек
+        try {
+            if (this.toolSettingsUI && typeof this.toolSettingsUI.renderSettings === 'function') {
+                this.toolSettingsUI.renderSettings(tool);
+            }
+        } catch (error) {
+            console.error('Error rendering tool settings', error);
+        }
+
+        // 5. Обновляем подсветку кнопок тулбара
+        this.updateToolbarButtons();
     }
 
     /**
@@ -921,6 +955,7 @@ export default class ImageEditor {
      * @param {MouseEvent} e - Событие мыши
      */
     onOverlayMouseDown(e) {
+        // 1. Общая логика (хит-тест слоёв, создание/выбор, dragState)
         try {
             const coords = this.getCanvasCoords(e);
             let hit = null;
@@ -1136,6 +1171,15 @@ export default class ImageEditor {
         } catch (error) {
             console.error('Error in onOverlayMouseDown:', error);
         }
+
+        // 2. Дать инструменту возможность дополнительно обработать
+        try {
+            if (this.activeTool && typeof this.activeTool.handleMouseDown === 'function') {
+                this.activeTool.handleMouseDown(e);
+            }
+        } catch (error) {
+            console.error('Error in tool.handleMouseDown', error);
+        }
     }
 
     /**
@@ -1206,6 +1250,14 @@ export default class ImageEditor {
         } catch (error) {
             console.error('Error in onMouseMove:', error);
         }
+
+        try {
+            if (this.activeTool && typeof this.activeTool.handleMouseMove === 'function') {
+                this.activeTool.handleMouseMove(e);
+            }
+        } catch (error) {
+            console.error('Error in tool.handleMouseMove', error);
+        }
     }
 
     /**
@@ -1228,6 +1280,14 @@ export default class ImageEditor {
             this.updateLayersPanel();
         } catch (error) {
             console.error('Error in onMouseUp:', error);
+        }
+
+        try {
+            if (this.activeTool && typeof this.activeTool.handleMouseUp === 'function') {
+                this.activeTool.handleMouseUp(e);
+            }
+        } catch (error) {
+            console.error('Error in tool.handleMouseUp', error);
         }
     }
 

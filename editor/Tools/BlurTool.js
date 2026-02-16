@@ -2,30 +2,39 @@
 import BaseTool from './BaseTool.js';
 
 export default class BlurTool extends BaseTool {
-    constructor(editor) {
-        super(editor, {
-            name: 'blur',
-            settingsIds: ['blurRadiusLabel']
+    constructor(editor, settings) {
+        super(editor, settings, 'blur', {
+            supportsCreation: true,
+            settingsIds: ['blurRadiusLabel'],
         });
 
         this.settings = {
-            radius: 6
-        }
+            radius: settings?.radius ?? 6,
+        };
 
-        this.supportsCreation = true;
+        this.currentLayer = null;
+        this.isDrawing = false;
     }
 
+
     activate() {
-        this.overlay.classList.add('blur-mode');
         super.activate();
+
         const radiusInput = document.getElementById('blurRadius');
-        if (radiusInput) this.radius = +radiusInput.value;
+        if (radiusInput) {
+            this.settings.radius = Number(radiusInput.value);
+        }
+
+        const activeLayer = this.editor.getActiveLayer?.();
+        this.currentLayer = activeLayer?.type === 'blur' ? activeLayer : null;
+
+        this.updateOverlay();
+        this.editor.updateToolbarButtons?.();
     }
 
     deactivate() {
         super.deactivate();
-        this.overlay.classList.remove('blur-mode');
-        this.editor.updateToolbarButtons();
+        this.editor.updateToolbarButtons?.();
     }
 
     getUISettingsConfig() {
@@ -44,55 +53,102 @@ export default class BlurTool extends BaseTool {
         };
     }
 
-    setupOverlay() {
-        super.setupOverlay();
-        // this.overlay.style.cursor = 'crosshair';
-        // this.overlay.style.border = 'none';
-        // this.overlay.style.backgroundColor = 'rgba(0,128,255,0.2)';
-        // this.overlay.style.pointerEvents = 'auto'; // Важно для получения событий
+    setupOverlay(overlayElement) {
+        super.setupOverlay(overlayElement);
+        if (!this.overlay) return;
+
+        this.overlay.classList.add('blur-mode');
+        this.createPreviewElement('blurPreview', 'blur-mode');
     }
 
+    cleanupOverlay() {
+        if (this.overlay) {
+            this.overlay.classList.remove('blur-mode');
+            // ✅ Сбрасываем стили, чтобы другие инструменты могли работать
+            this.overlay.style.cursor = '';
+            this.overlay.style.pointerEvents = '';
+            this.overlay.style.display = '';
+        }
+        super.cleanupOverlay();
+    }
+
+    /**
+     * Обновляет позицию/размер превью по rect слоя
+     * @param {{x:number,y:number,width:number,height:number}} rect
+     */
+    updatePreviewPosition(rect) {
+        if (!this.previewElement || !rect) return;
+        const canvas = this.editor?.canvas;
+        if (!canvas) return;
+
+        const { x, y, width, height } = rect;
+        const scale = canvas.clientWidth / canvas.width;
+
+        this.previewElement.style.position = 'absolute';
+        this.previewElement.style.left = `${x * scale}px`;
+        this.previewElement.style.top = `${y * scale}px`;
+        this.previewElement.style.width = `${width * scale}px`;
+        this.previewElement.style.height = `${height * scale}px`;
+        this.previewElement.style.boxSizing = 'border-box';
+        this.previewElement.style.display = 'block';
+    }
 
     updateOverlay() {
-        if (!this.currentLayer?.rect) return;
-        const { x, y, width, height } = this.currentLayer.rect;
-        const scale = this.canvas.width / this.canvas.clientWidth;
+        if (!this.previewElement || !this.currentLayer?.rect) {
+            if (this.previewElement) {
+                this.previewElement.style.display = 'none';
+            }
+            return;
+        }
 
-        this.overlay.style.left = `${x / scale}px`;
-        this.overlay.style.top = `${y / scale}px`;
-        this.overlay.style.width = `${width / scale}px`;
-        this.overlay.style.height = `${height / scale}px`;
-        this.overlay.style.boxSizing = 'border-box';
+        this.updatePreviewPosition(this.currentLayer.rect);
+    }
+
+    handleMouseDown(event) {
+        // За создание слоёв отвечает EditorCore.onOverlayMouseDown
+        // if (!this.isActive) return;
+    }
+
+    handleMouseMove(event) {
+        // if (!this.isActive) return;
+    }
+
+    handleMouseUp(event) {
+        // if (!this.isActive) return;
     }
 
     cancelOperation() {
         super.cancelOperation();
         this.currentLayer = null;
+        this.isDrawing = false;
+        this.updateOverlay();
     }
 
     /**
-     * Обновляет настройку инструмента и применяет её к активному слою, если он текстовый
-     * @param {string} key — имя параметра ('textColor', 'textSize')
+     * Обновляет настройку инструмента и применяет её к активному слою blur
+     * @param {string} key — имя параметра ('radius')
      * @param {string|number} value — новое значение
      */
     updateSetting(key, value) {
         switch (key) {
             case 'radius':
-                this.settings.radius = value;
+                this.settings.radius = Number(value);
                 break;
             default:
                 console.warn(`BlurTool.updateSetting: unknown setting key "${key}"`);
                 return;
         }
 
-        // Применяем настройку к активному текстовому слою, если есть
-        const activeLayer = this.editor.getActiveLayer();
+        const activeLayer = this.editor.getActiveLayer?.();
         if (activeLayer?.type === 'blur') {
             if (key === 'radius') {
-                activeLayer.params.radius = value;
+                activeLayer.params.radius = this.settings.radius;
             }
-            this.editor.render(); // перерисовываем
+            this.currentLayer = activeLayer;
         }
+
+        this.editor.render?.();
+        this.updateOverlay();
     }
 
 }

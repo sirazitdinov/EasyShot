@@ -2,20 +2,23 @@
 import BaseTool from './BaseTool.js';
 
 export default class CropTool extends BaseTool {
-    constructor(editor) {
-        super(editor, { name: 'crop' });
-        this.supportsCreation = true;
+    constructor(editor, settings) {
+        // name и supportsCreation задаём через options, как для других инструментов
+        super(editor, settings, 'crop', { supportsCreation: true });
     }
 
     activate() {
         super.activate();
-        this.overlay.classList.add('crop-mode');
+
+        const activeLayer = this.editor.getActiveLayer?.();
+        this.currentLayer = activeLayer?.type === 'crop' ? activeLayer : null;
+
+        this.updateOverlay();
+        this.editor.updateToolbarButtons?.();
     }
 
     deactivate() {
         super.deactivate();
-        // this.overlay.classList.remove('highlight-mode');
-        this.editor.updateToolbarButtons();
     }
 
     getUISettingsConfig() {
@@ -24,24 +27,49 @@ export default class CropTool extends BaseTool {
         };
     }
 
-    setupOverlay() {
-        super.setupOverlay();
-        this.overlay.style.cursor = 'crosshair';
+    setupOverlay(overlayElement) {
+        super.setupOverlay(overlayElement);
+        if (!overlayElement) return;
+
+        // overlayElement.classList.add('crop-mode');
+        // overlayElement.style.cursor = 'crosshair';
+        this.createPreviewElement('cropPreview', 'crop-mode');
+    }
+
+    cleanupOverlay() {
+        if (this.overlay) {
+            this.overlay.classList.remove('crop-mode');
+            // ✅ Сбрасываем стили, чтобы другие инструменты могли работать
+            this.overlay.style.cursor = '';
+            this.overlay.style.pointerEvents = '';
+            this.overlay.style.display = '';
+            this.overlay.style.left = '';
+            this.overlay.style.top = '';
+            this.overlay.style.width = '';
+            this.overlay.style.height = '';
+        }
+
+        super.cleanupOverlay();
+        this.currentLayer = null;
     }
 
     updateOverlay() {
+        if (!this.overlay) return;
         if (!this.currentLayer?.rect) return;
 
         const { x, y, width, height } = this.currentLayer.rect;
-        const scale = this.canvas.width / this.canvas.clientWidth;
-        this.overlay.style.left = `${x / scale}px`;
-        this.overlay.style.top = `${y / scale}px`;
-        this.overlay.style.width = `${width / scale}px`;
-        this.overlay.style.height = `${height / scale}px`;
 
-        // this.overlay.style.border = '2px solid #fff';
-        // this.overlay.style.boxSizing = 'border-box';
-        // this.overlay.style.backgroundColor = 'rgba(0,0,0,0.5)';
+        const canvas = this.editor?.canvas;
+        if (!canvas || !canvas.clientWidth || !canvas.clientHeight) return;
+
+        // Учитываем возможный неодинаковый масштаб по X и Y
+        const scaleX = canvas.width / canvas.clientWidth;
+        const scaleY = canvas.height / canvas.clientHeight;
+
+        this.overlay.style.left = `${x / scaleX}px`;
+        this.overlay.style.top = `${y / scaleY}px`;
+        this.overlay.style.width = `${width / scaleX}px`;
+        this.overlay.style.height = `${height / scaleY}px`;
     }
 
     cancelOperation() {

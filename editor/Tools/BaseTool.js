@@ -11,172 +11,94 @@ export default class BaseTool {
      * @param {string} options.name - Название инструмента
      * @param {string[]} options.settingsIds - Идентификаторы DOM-элементов с настройками инструмента
      */
-    constructor(editor, options = {}) {
-        this.editor = editor;
-        this.name = options.name || 'base';
-        this.settingsIds = options.settingsIds || [];
-        this.isActive = false;
-        this.isDrawing = false;
-        this.startPoint = null;
-        this.currentPoint = null;
-        this.overlay = this.editor.selectionOverlay;
-        this.canvas = this.editor.canvas;
-        this.ctx = this.editor.context;
+    constructor(editor, settings, name, options = {}) {
+        this.editor = editor;       // ссылка на EditorCore
+        this.settings = settings;   // объект настроек для инструмента
+        this.name = name;           // 'crop' | 'blur' | 'highlight' | 'line' | 'text'
+        this.supportsCreation = !!options.supportsCreation;
 
-        // Хранение состояния для функции отмены
-        this.historyState = null;
+        this.overlay = null;        // DOM-элемент selectionOverlay (назначается в setupOverlay)
+        this.previewElement = null; // опциональный DOM для превью
     }
 
-    // Абстрактный метод
-    getUISettingsConfig() {
-        throw new Error('Must be implemented by subclass');
-    }
-
-    // Применение кропа
-    applyToCroppedCanvas() {
-        throw new Error('Must be implemented by subclass');
-    }
-
+    // Жизненный цикл инструмента
     /**
      * Активация инструмента
-     * Устанавливает обработчики событий и показывает настройки
+     * Предназначен для переопределения в дочерних классах
      */
-    activate() {
-        this.isActive = true;
-        // this.showSettings();
-        // this.editor.updateToolbarButtons(this.name);
-        this.setupOverlay();
-
-        // this.editor.showToolSettings(this);
-    }
+    activate() { }
 
     /**
      * Деактивация инструмента
-     * Удаляет обработчики событий и скрывает настройки
+     * Предназначен для переопределения в дочерних классах
      */
-    deactivate() {
-        this.isActive = false;
-        // this.hideSettings();
-        // this.editor.updateToolbarButtons(this.name);
-        this.cleanupOverlay();
-        this.isDrawing = false;
-
-        // Убираем настройки
-        // this.editor.showToolSettings(null);
-    }
+    deactivate() { }
 
     /**
      * Настраивает overlay для текущего инструмента
+     *  @param {HTMLElement} overlayElement
      */
-    setupOverlay() {
-        this.overlay.classList.remove('active', 'crop-mode', 'move', 'highlight-mode', 'text-mode');
-        this.overlay.className = '';
-        this.overlay.style.display = 'block';
-        this.overlay.innerHTML = '';
+    setupOverlay(overlayElement) {
+        this.overlay = overlayElement;
     }
 
     /**
      * Очищает overlay после использования инструмента
      */
     cleanupOverlay() {
-        this.overlay.style.display = 'none';
-        this.overlay.innerHTML = '';
-        this.overlay.className = '';
+        this.overlay = null;
+        this.removePreviewElement?.();
+    }
+
+    // Работа с мышью — инструменты могут переопределять
+    handleMouseDown(e) { }
+    handleMouseMove(e) { }
+    handleMouseUp(e) { }
+
+    // Обновление overlay (e.g. при изменении активного слоя, спустя drag-n-drop и т.п.)
+    updateOverlay() { }
+
+    /**
+     * Обновляет настройки инструмента (внутреннее состояние) при изменении UI
+     * @param {string} key
+     * @param {string|number|boolean} value
+     */
+    updateSetting(key, value) {
+        if (!this.settings) return;
+        this.settings[key] = value;
+    }
+
+    // Общий механизм для DOM-превью
+
+    /**
+   * Создаёт DOM-элемент превью внутри overlay
+   * @param {string} id
+   * @param {string} className
+   * @returns {HTMLElement|null}
+   */
+    createPreviewElement(id, className) {
+        if (!this.overlay) return null;
+        const el = document.createElement('div');
+        el.id = id;
+        el.className = className;
+        this.overlay.appendChild(el);
+        this.previewElement = el;
+        return el;
     }
 
     /**
-     * Обновляет UI настроек для конкретного инструмента
+     * Обновление позиции/размера превью
      * Предназначен для переопределения в дочерних классах
      */
-    updateSetting() {
-        // Базовая реализация для переопределения
-    }
-
-    getUISettings(){
-        // По умолчанию — пусто
-        return {
-            visibleElements: [],        // массив id-элементов (например: ['blurRadius', 'blurRadiusLabel'])
-            settingsValues: {}          // текущие значения (опционально, для инициализации полей)
-        };
-    }
+    updatePreviewPosition(rectOrPoints) { }
 
     /**
-     * Обработка нажатия клавиш
-     * @param {KeyboardEvent} event
+     * Удаляет DOM-элемент превью, если он существует
      */
-    handleKeyDown(event) {
-        // ESC для отмены текущего действия
-        if (event.key === 'Escape') {
-            this.cancelOperation();
+    removePreviewElement() {
+        if (this.previewElement && this.previewElement.parentNode) {
+            this.previewElement.parentNode.removeChild(this.previewElement);
         }
-    }
-
-    /**
-     * Отмена текущей операции
-     * Предназначен для переопределения в дочерних классах
-     */
-    cancelOperation() {
-        this.isDrawing = false;
-        this.cleanupOverlay();
-        this.setupOverlay();
-        this.deactivate();
-    }
-
-    /**
-     * Обновляет overlay во время рисования
-     * Предназначен для переопределения в дочерних классах
-     */
-    updateOverlay() {
-        // Базовая реализация для переопределения
-    }
-
-    /**
-     * Применяет операцию к холсту
-     * Предназначен для переопределения в дочерних классах
-     */
-    applyOperation() {
-        // Базовая реализация для переопределения
-    }
-
-    /**
-     * Сохраняет текущее состояние холста для функции отмены
-     */
-    saveHistoryState() {
-        // Сохраняем текущее состояние холста
-        // временный вариант
-        if (this.editor.historyManager) {
-            this.editor.historyManager.commit(`${this.name} tool action`);
-        }
-    }
-
-    /**
-     * Возвращает координаты относительно холста
-     * @param {MouseEvent} event
-     * @returns {Object} {x, y}
-     */
-    getCanvasCoords(event) {
-        // Используем единый метод из EditorCore, чтобы координаты совпадали
-        if (this.editor && typeof this.editor.getCanvasCoords === 'function') {
-            return this.editor.getCanvasCoords(event);
-        }
-
-        // fallback на старое поведение (на всякий случай)
-        const rect = this.canvas.getBoundingClientRect();
-        return {
-            x: (event.clientX - rect.left) * (this.canvas.width / this.canvas.clientWidth),
-            y: (event.clientY - rect.top) * (this.canvas.height / this.canvas.clientHeight),
-        };
-    }
-
-    /**
-     * Конвертирует данные изображения в Blob
-     * @param {string} format - формат изображения (png, jpeg, webp)
-     * @param {number} quality - качество для форматов с потерями (jpeg, webp)
-     * @returns {Promise<Blob>}
-     */
-    canvasToBlob(format = 'png', quality = 0.9) {
-        return new Promise((resolve) => {
-            this.canvas.toBlob(resolve, `image/${format}`, quality);
-        });
+        this.previewElement = null;
     }
 }

@@ -314,9 +314,11 @@ input[type="color"] {
 
 #selectionOverlay.crop-mode,
 #selectionOverlay.blur-mode,
-#selectionOverlay.highlight-mode {
+#selectionOverlay.highlight-mode,
+#selectionOverlay.text-mode,
+#selectionOverlay.line-mode {
     cursor: crosshair !important;
-    border: 'none';
+    border: none;
     pointer-events: auto;
 }
 #selectionOverlay.move {

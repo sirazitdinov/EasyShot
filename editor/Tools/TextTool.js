@@ -2,33 +2,43 @@
 import BaseTool from './BaseTool.js';
 
 export default class TextTool extends BaseTool {
-    constructor(editor) {
-        super(editor, {
-            name: 'text',
-            settingsIds: ['textColorLabel', 'textSizeLabel']
+    constructor(editor, settings) {
+        super(editor, settings, 'text', {
+            supportsCreation: true,
+            settingsIds: ['textColorLabel', 'textSizeLabel'],
         });
 
         this.settings = {
-            color: '#ff0000',
-            fontSize: 16,
-            thickness: 2,
+            color: settings.color ?? '#ff0000',
+            fontSize: settings.fontSize ?? 16,
         };
 
-        this.supportsCreation = true;
+        this.currentLayer = null;
+        this.isDrawing = false;
     }
 
     activate() {
-        this.overlay.classList.add('text-mode');
         super.activate();
+
         const colorInput = document.getElementById('textColor');
         const sizeInput = document.getElementById('textSize');
-        if (colorInput) this.color = colorInput.value;
-        if (sizeInput) this.fontSize = +sizeInput.value;
+
+        if (colorInput) {
+            this.settings.color = colorInput.value;
+        }
+        if (sizeInput) {
+            this.settings.fontSize = Number(sizeInput.value);
+        }
+
+        const activeLayer = this.editor.getActiveLayer?.();
+        this.currentLayer = activeLayer?.type === 'text' ? activeLayer : null;
+
+        this.updateOverlay();
+        this.editor.updateToolbarButtons?.();
     }
 
     deactivate() {
         super.deactivate();
-        this.overlay.classList.remove('text-mode');
         this.editor.updateToolbarButtons();
     }
 
@@ -55,80 +65,71 @@ export default class TextTool extends BaseTool {
         };
     }
 
-    setupOverlay() {
-        super.setupOverlay();
-        // this.overlay.style.cursor = 'crosshair';
-        // this.overlay.style.border = '2px dashed #000';
-        // this.overlay.style.boxSizing = 'border-box';
-        // this.overlay.style.backgroundColor = 'rgba(0,0,0,0.05)';
-    }
+    setupOverlay(overlayElement) {
+        super.setupOverlay(overlayElement);
+        if (!this.overlay) return;
 
-    handleMouseDown(event) {
-        if (!this.isActive) return;
-        const coords = this.getCanvasCoords(event);
-        this.startPoint = { x: coords.x, y: coords.y };
-        this.currentLayer = {
-            type: 'text',
-            rect: { x: coords.x, y: coords.y, width: 200, height: this.fontSize * 1.5 },
-            params: {
-                text: 'Текст',
-                color: this.color,
-                fontSize: this.fontSize
+        this.overlay.classList.add('text-mode');
+        this.overlay.style.cursor = 'text';
+        this.overlay.style.border = '1px dashed #000';
+        this.overlay.style.backgroundColor = 'transparent';
+        this.overlay.style.boxSizing = 'border-box';
+        this.overlay.style.pointerEvents = 'auto'; // ✅ Должно быть 'auto' для создания слоя
+
+        // создаём DOM-превью через общий механизм BaseTool
+        if (!this.previewElement) {
+            const el = this.createPreviewElement('textPreview', 'text-mode');
+            if (el) {
+                this.textPreview = el;
+                this.textPreview.style.cursor = 'text';
+                this.textPreview.style.position = 'absolute';
+                this.textPreview.style.boxSizing = 'border-box';
             }
-        };
-        this.isDrawing = true;
-        if (hit || newLayer) {
-            this.historyManager.beginAtomicOperation('Move/resize layer');
+        } else {
+            this.textPreview = this.previewElement;
         }
     }
 
-    // handleMouseMove(event) {
-    //     if (!this.isActive || !this.isDrawing) return;
-    //     const coords = this.getCanvasCoords(event);
-    //     // Фиксированный размер при создании — только позиционирование
-    //     this.currentLayer.rect.x = coords.x;
-    //     this.currentLayer.rect.y = coords.y;
-    //     this.updateOverlay();
-    // }
-
-    handleMouseUp(event) {
-        if (!this.isActive || !this.isDrawing) return;
-        this.isDrawing = false;
-
-        this.editor.addLayer(this.currentLayer);
-        this.editor.setActiveLayer(this.currentLayer);
-
-        // Двойной клик → редактирование текста
-        setTimeout(() => {
-            const rect = this.canvas.getBoundingClientRect();
-            const clickX = (event.clientX - rect.left) * (this.canvas.width / rect.width);
-            const clickY = (event.clientY - rect.top) * (this.canvas.height / rect.height);
-            const layer = this.currentLayer;
-            if (layer.rect &&
-                clickX >= layer.rect.x && clickX <= layer.rect.x + layer.rect.width &&
-                clickY >= layer.rect.y && clickY <= layer.rect.y + layer.rect.height) {
-                this.editText(layer);
-            }
-        }, 50);
-
-        this.cleanupOverlay();
-        this.setupOverlay();
+    cleanupOverlay() {
+        if (this.overlay) {
+            this.overlay.classList.remove('text-mode');
+            // ✅ Сбрасываем стили, чтобы другие инструменты могли работать
+            this.overlay.style.cursor = '';
+            this.overlay.style.border = '';
+            this.overlay.style.pointerEvents = '';
+            this.overlay.style.display = '';
+        }
+        super.cleanupOverlay();
     }
 
     updateOverlay() {
-        if (!this.currentLayer?.rect) return;
-        const { x, y } = this.currentLayer.rect;
-        const scale = this.canvas.width / this.canvas.clientWidth;
+        if (!this.overlay || !this.currentLayer?.rect) return;
 
-        this.overlay.style.left = `${x / scale}px`;
-        this.overlay.style.top = `${y / scale}px`;
-        this.overlay.style.width = `${200 / scale}px`;
-        this.overlay.style.height = `${(this.fontSize * 1.5) / scale}px`;
+        const canvas = this.editor?.canvas;
+        if (!canvas) return;
+
+        const { x, y, width, height } = this.currentLayer.rect;
+        const scale = canvas.clientWidth / canvas.width;
+
+
+        this.overlay.style.left = `${x * scale}px`;
+        this.overlay.style.top = `${y * scale}px`;
+        this.overlay.style.width = `${width * scale}px`;
+        this.overlay.style.height = `${height * scale}px`;
+        this.overlay.style.display = 'block';
     }
+
+    handleMouseDown(event) { }
+
+    handleMouseMove(event) { }
+
+    handleMouseUp(event) { }
 
     cancelOperation() {
         super.cancelOperation();
         this.currentLayer = null;
+        this.isDrawing = false;
+        this.updateOverlay();
     }
 
     /**
@@ -142,7 +143,7 @@ export default class TextTool extends BaseTool {
                 this.settings.color = value;
                 break;
             case 'textSize':
-                this.settings.fontSize = value;
+                this.settings.fontSize = Number(value);
                 break;
             default:
                 console.warn(`TextTool.updateSetting: unknown setting key "${key}"`);
@@ -150,15 +151,19 @@ export default class TextTool extends BaseTool {
         }
 
         // Применяем настройку к активному текстовому слою, если есть
-        const activeLayer = this.editor.getActiveLayer();
+        const activeLayer = this.editor.getActiveLayer?.();
         if (activeLayer?.type === 'text') {
             if (key === 'textColor') {
                 activeLayer.params.color = value;
             } else if (key === 'textSize') {
-                activeLayer.params.fontSize = value;
+                activeLayer.params.fontSize = Number(value);
+                activeLayer.rect.height = this.settings.fontSize * 1.5; // чтобы overlay и слой совпадали
             }
-            this.editor.render(); // перерисовываем
+            this.currentLayer = activeLayer;
         }
+
+        this.editor.render(); // перерисовываем
+        this.updateOverlay();
     }
 
     editText(layer) {
@@ -171,6 +176,9 @@ export default class TextTool extends BaseTool {
 
             layer.params.text = newText;
             this.editor.render();
+
+            this.currentLayer = layer;
+            this.updateOverlay();
         }
     }
 }
