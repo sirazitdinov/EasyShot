@@ -1,5 +1,6 @@
 // Tools/TextTool.js
 import BaseTool from './BaseTool.js';
+import Helper from '../Helper.js';
 
 export default class TextTool extends BaseTool {
     constructor(editor, settings) {
@@ -72,7 +73,7 @@ export default class TextTool extends BaseTool {
         this.overlay.classList.add('text-mode');
         this.overlay.style.cursor = 'text';
         this.overlay.style.border = '1px dashed #000';
-        this.overlay.style.backgroundColor = 'transparent';
+        // this.overlay.style.backgroundColor = 'transparent';
         this.overlay.style.boxSizing = 'border-box';
         this.overlay.style.pointerEvents = 'auto'; // ✅ Должно быть 'auto' для создания слоя
 
@@ -109,13 +110,12 @@ export default class TextTool extends BaseTool {
         if (!canvas) return;
 
         const { x, y, width, height } = this.currentLayer.rect;
-        const scale = canvas.clientWidth / canvas.width;
 
-
-        this.overlay.style.left = `${x * scale}px`;
-        this.overlay.style.top = `${y * scale}px`;
-        this.overlay.style.width = `${width * scale}px`;
-        this.overlay.style.height = `${height * scale}px`;
+        // Используем единую утилиту для конвертации координат канваса в CSS-пиксели
+        this.overlay.style.left = `${Helper.toCssPixels(x, canvas)}px`;
+        this.overlay.style.top = `${Helper.toCssPixels(y, canvas)}px`;
+        this.overlay.style.width = `${Helper.toCssPixels(width, canvas)}px`;
+        this.overlay.style.height = `${Helper.toCssPixels(height, canvas)}px`;
         this.overlay.style.display = 'block';
     }
 

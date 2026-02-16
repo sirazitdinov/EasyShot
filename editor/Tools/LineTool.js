@@ -1,5 +1,6 @@
 // Tools/LineTool.js
 import BaseTool from './BaseTool.js';
+import Helper from '../Helper.js';
 
 export default class LineTool extends BaseTool {
     constructor(editor, settings = {}) {
@@ -84,7 +85,7 @@ export default class LineTool extends BaseTool {
         this.overlay.classList.add('line-mode');
         this.overlay.style.cursor = 'crosshair';
         this.overlay.style.border = 'none';
-        this.overlay.style.backgroundColor = 'transparent';
+        // this.overlay.style.backgroundColor = 'transparent';
         this.overlay.style.pointerEvents = 'auto';
 
         // создаём DOM-превью через общий механизм BaseTool
@@ -139,11 +140,10 @@ export default class LineTool extends BaseTool {
         const len = Math.sqrt(dx * dx + dy * dy) || 1;
         const angle = (Math.atan2(dy, dx) * 180) / Math.PI;
 
-        const scale = canvas.clientWidth / canvas.width;
-
-        this.linePreview.style.left = `${x1 * scale}px`;
-        this.linePreview.style.top = `${y1 * scale}px`;
-        this.linePreview.style.width = `${len * scale}px`;
+        // Используем единую утилиту для конвертации координат канваса в CSS-пиксели
+        this.linePreview.style.left = `${Helper.toCssPixels(x1, canvas)}px`;
+        this.linePreview.style.top = `${Helper.toCssPixels(y1, canvas)}px`;
+        this.linePreview.style.width = `${Helper.toCssPixels(len, canvas)}px`;
         this.linePreview.style.transform = `rotate(${angle}deg)`;
         this.linePreview.style.borderColor = this.settings.color;
         this.linePreview.style.borderWidth = `${this.settings.thickness}px`;

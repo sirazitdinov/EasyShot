@@ -22,4 +22,38 @@ export default class Helper {
     static formatSize(value) {
         return Math.round(value * 10) / 10; // Округляем до 1 знака после запятой
     }
+
+    /**
+     * Получает коэффициент масштабирования для конвертации координат канваса в CSS-пиксели
+     * @param {HTMLCanvasElement} canvas
+     * @param {number} [dpr] — Device Pixel Ratio (опционально)
+     * @returns {number}
+     */
+    static getScaleFactor(canvas, dpr = window.devicePixelRatio || 1) {
+        if (!canvas || !canvas.width || !canvas.clientWidth) return 1;
+        return (canvas.clientWidth / canvas.width) * dpr;
+    }
+
+    /**
+     * Конвертирует координаты канваса в CSS-пиксели для отображения
+     * @param {number} canvasValue — значение в пикселях канваса
+     * @param {HTMLCanvasElement} canvas
+     * @param {number} [dpr] — Device Pixel Ratio (опционально)
+     * @returns {number}
+     */
+    static toCssPixels(canvasValue, canvas, dpr = window.devicePixelRatio || 1) {
+        return canvasValue * Helper.getScaleFactor(canvas, dpr);
+    }
+
+    /**
+     * Конвертирует CSS-пиксели в координаты канваса
+     * @param {number} cssValue — значение в CSS-пикселях
+     * @param {HTMLCanvasElement} canvas
+     * @param {number} [dpr] — Device Pixel Ratio (опционально)
+     * @returns {number}
+     */
+    static toCanvasPixels(cssValue, canvas, dpr = window.devicePixelRatio || 1) {
+        const scale = Helper.getScaleFactor(canvas, dpr);
+        return scale === 0 ? 0 : cssValue / scale;
+    }
 }

@@ -1,5 +1,6 @@
 // Tools/BlurTool.js
 import BaseTool from './BaseTool.js';
+import Helper from '../Helper.js';
 
 export default class BlurTool extends BaseTool {
     constructor(editor, settings) {
@@ -82,13 +83,13 @@ export default class BlurTool extends BaseTool {
         if (!canvas) return;
 
         const { x, y, width, height } = rect;
-        const scale = canvas.clientWidth / canvas.width;
 
         this.previewElement.style.position = 'absolute';
-        this.previewElement.style.left = `${x * scale}px`;
-        this.previewElement.style.top = `${y * scale}px`;
-        this.previewElement.style.width = `${width * scale}px`;
-        this.previewElement.style.height = `${height * scale}px`;
+        // Используем единую утилиту для конвертации координат канваса в CSS-пиксели
+        this.previewElement.style.left = `${Helper.toCssPixels(x, canvas)}px`;
+        this.previewElement.style.top = `${Helper.toCssPixels(y, canvas)}px`;
+        this.previewElement.style.width = `${Helper.toCssPixels(width, canvas)}px`;
+        this.previewElement.style.height = `${Helper.toCssPixels(height, canvas)}px`;
         this.previewElement.style.boxSizing = 'border-box';
         this.previewElement.style.display = 'block';
     }

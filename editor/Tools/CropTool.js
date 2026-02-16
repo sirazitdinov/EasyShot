@@ -1,5 +1,6 @@
 // Tools/CropTool.js
 import BaseTool from './BaseTool.js';
+import Helper from '../Helper.js';
 
 export default class CropTool extends BaseTool {
     constructor(editor, settings) {
@@ -58,18 +59,15 @@ export default class CropTool extends BaseTool {
         if (!this.currentLayer?.rect) return;
 
         const { x, y, width, height } = this.currentLayer.rect;
-
         const canvas = this.editor?.canvas;
-        if (!canvas || !canvas.clientWidth || !canvas.clientHeight) return;
 
-        // Учитываем возможный неодинаковый масштаб по X и Y
-        const scaleX = canvas.width / canvas.clientWidth;
-        const scaleY = canvas.height / canvas.clientHeight;
+        if (!canvas) return;
 
-        this.overlay.style.left = `${x / scaleX}px`;
-        this.overlay.style.top = `${y / scaleY}px`;
-        this.overlay.style.width = `${width / scaleX}px`;
-        this.overlay.style.height = `${height / scaleY}px`;
+        // Используем единую утилиту для конвертации координат канваса в CSS-пиксели
+        this.overlay.style.left = `${Helper.toCssPixels(x, canvas)}px`;
+        this.overlay.style.top = `${Helper.toCssPixels(y, canvas)}px`;
+        this.overlay.style.width = `${Helper.toCssPixels(width, canvas)}px`;
+        this.overlay.style.height = `${Helper.toCssPixels(height, canvas)}px`;
     }
 
     cancelOperation() {

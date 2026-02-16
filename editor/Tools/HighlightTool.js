@@ -1,5 +1,6 @@
 // Tools/HighlightTool.js
 import BaseTool from './BaseTool.js';
+import Helper from '../Helper.js';
 
 export default class HighlightTool extends BaseTool {
     constructor(editor, settings) {
@@ -74,7 +75,7 @@ export default class HighlightTool extends BaseTool {
         this.overlay.classList.add('highlight-mode');
         this.overlay.style.cursor = 'crosshair';
         this.overlay.style.border = 'none';
-        this.overlay.style.backgroundColor = 'transparent';
+        // this.overlay.style.backgroundColor = 'transparent';
         this.overlay.style.pointerEvents = 'auto';
 
         if (!this.previewElement) {
@@ -100,16 +101,16 @@ export default class HighlightTool extends BaseTool {
         if (!canvas) return;
 
         const { x, y, width, height } = this.currentLayer.rect;
-        const scale = canvas.clientWidth / canvas.width;
 
         const el = this.previewElement;
         el.style.position = 'absolute';
-        el.style.left = `${x * scale}px`;
-        el.style.top = `${y * scale}px`;
-        el.style.width = `${width * scale}px`;
-        el.style.height = `${height * scale}px`;
+        // Используем единую утилиту для конвертации координат канваса в CSS-пиксели
+        el.style.left = `${Helper.toCssPixels(x, canvas)}px`;
+        el.style.top = `${Helper.toCssPixels(y, canvas)}px`;
+        el.style.width = `${Helper.toCssPixels(width, canvas)}px`;
+        el.style.height = `${Helper.toCssPixels(height, canvas)}px`;
         el.style.border = `2px dashed ${this.settings.color}`;
-        el.style.backgroundColor = `${this.settings.color}33`;
+        // el.style.backgroundColor = `${this.settings.color}33`;
         el.style.boxSizing = 'border-box';
         el.style.display = 'block';
     }
@@ -120,7 +121,7 @@ export default class HighlightTool extends BaseTool {
             // ✅ Сбрасываем стили, чтобы другие инструменты могли работать
             this.overlay.style.cursor = '';
             this.overlay.style.border = '';
-            this.overlay.style.backgroundColor = '';
+            // this.overlay.style.backgroundColor = '';
             this.overlay.style.pointerEvents = '';
             this.overlay.style.display = '';
         }
