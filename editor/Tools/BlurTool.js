@@ -67,7 +67,7 @@ export default class BlurTool extends BaseTool {
             this.overlay.classList.remove('blur-mode');
             // ✅ Сбрасываем стили, чтобы другие инструменты могли работать
             this.overlay.style.cursor = '';
-            this.overlay.style.pointerEvents = '';
+            this.overlay.style.pointerEvents = 'auto'; // ✅ Возвращаем в исходное состояние для работы других инструментов
             this.overlay.style.display = '';
         }
         super.cleanupOverlay();

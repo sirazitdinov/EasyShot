@@ -10,6 +10,13 @@ export default class ToolSettingsUI {
     }
 
     renderSettings(tool) {
+        // Если инструмент null — скрываем панель настроек
+        if (!tool) {
+            this.container.style.display = 'none';
+            this.clear();
+            return;
+        }
+
         const config = tool.getUISettingsConfig();
 
         // Скрываем панель если нет настроек

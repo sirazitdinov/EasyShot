@@ -116,6 +116,10 @@ export default class LayerManager {
     }
 
     set activeLayer(layer) {
+        if (!layer) {
+            this.activeLayerIndex = -1;
+            return;
+        }
         const idx = this.layers.indexOf(layer);
         if (idx !== -1) {
             this.activeLayerIndex = idx;
@@ -147,7 +151,14 @@ export default class LayerManager {
         if (!this.activeLayer) return false;
         const removed = this.layers.splice(this.activeLayerIndex, 1)[0];
         // После удаления: либо предыдущий слой, либо базовый
-        this.activeLayerIndex = Math.max(0, this.activeLayerIndex - 1);
+        // Если удалили последний слой или индекс вышел за границы
+        if (this.activeLayerIndex >= this.layers.length) {
+            this.activeLayerIndex = this.layers.length - 1;
+        }
+        // Если слоёв не осталось совсем (кроме base), сбрасываем в -1
+        if (this.activeLayerIndex < 0) {
+            this.activeLayerIndex = -1;
+        }
         this.updateLayersPanel();
         this.editor.render();
         return removed;

@@ -233,6 +233,20 @@ export default class ImageEditor {
 
         // 3. Настраиваем overlay под новый инструмент
         if (this.selectionOverlay) {
+
+            // ✅ Сначала полностью сбрасываем overlay
+            this.selectionOverlay.style.cssText = '';
+            this.selectionOverlay.className = '';
+
+            // ✅ Устанавливаем базовые размеры
+            if (this.canvas) {
+                this.selectionOverlay.style.width = `${this.canvas.clientWidth}px`;
+                this.selectionOverlay.style.height = `${this.canvas.clientHeight}px`;
+            }
+
+            this.selectionOverlay.style.position = 'absolute';
+            this.selectionOverlay.style.pointerEvents = 'auto';
+
             if (this.activeTool) {
                 try {
                     if (typeof this.activeTool.setupOverlay === 'function') {
@@ -247,10 +261,10 @@ export default class ImageEditor {
                 } catch (error) {
                     console.error('Error activating tool', error);
                 }
-                this.selectionOverlay.style.pointerEvents = 'auto';
-            } else {
-                this.selectionOverlay.style.pointerEvents = 'none';
             }
+            // pointerEvents должен быть 'auto' всегда, когда есть активный инструмент
+            // или когда инструмент был деактивирован (чтобы другие обработчики работали)
+            // this.selectionOverlay.style.pointerEvents = 'auto';
         }
 
         // 4. Обновляем UI настроек
@@ -351,7 +365,8 @@ export default class ImageEditor {
 
         // Удаление слоя по Delete
         document.addEventListener('keydown', (e) => {
-            if (e.key === 'Delete' && this.activeLayer) {
+            if (e.key === 'Delete' && this.layerManager.activeLayer) {
+                e.preventDefault(); // Предотвращаем повторное срабатывание при удержании клавиши
                 this.deleteActiveLayer();
             }
         });
@@ -538,6 +553,22 @@ export default class ImageEditor {
      */
     getActiveLayer() {
         return this.layerManager.activeLayer;
+    }
+
+    /**
+     * Getter для активного слоя (делегирование в layerManager)
+     */
+    get activeLayer() {
+        return this.layerManager?.activeLayer || null;
+    }
+
+    /**
+     * Setter для активного слоя (делегирование в layerManager)
+     */
+    set activeLayer(layer) {
+        if (this.layerManager) {
+            this.layerManager.activeLayer = layer;
+        }
     }
 
     // Сохранение настроек пользователя в localStorage TODO Сохранять в расширении
@@ -1152,6 +1183,11 @@ export default class ImageEditor {
                 const newLayer = this.layerManager.createLayerObject(initialOptions.type, initialOptions);
                 const created = this.addLayer(newLayer);
 
+                // Синхронизируем currentLayer у crop-инструмента после создания слоя
+                if (type === 'crop' && this.activeTool?.name === 'crop') {
+                    this.activeTool.currentLayer = created;
+                }
+
                 this.dragState = {
                     start: coords,
                     layer: created,
@@ -1432,8 +1468,63 @@ export default class ImageEditor {
      */
     deleteActiveLayer() {
         try {
+            const deletedLayer = this.layerManager.activeLayer;
+            const wasCrop = this.layerManager.activeLayer?.type === 'crop';
+
             this.layerManager.deleteActiveLayer();
+
+            // Сбрасываем currentLayer у всех инструментов, которые могли ссылаться на удалённый слой
+            Object.values(this.tools).forEach(tool => {
+                if (tool.currentLayer?.id === deletedLayer?.id) {
+                    tool.currentLayer = null;
+                }
+            });
+
+            if (wasCrop) {
+                // Если активен crop-инструмент, очищаем его overlay
+                if (this.activeTool?.name === 'crop') {
+                    // Даём инструменту убрать свои overlay/preview элементы
+                    if (typeof this.activeTool.cleanupOverlay === 'function') {
+                        this.activeTool.cleanupOverlay();
+                    }
+                }
+
+                // ✅ ВАЖНО: Сбрасываем стили selectionOverlay в любом случае
+                if (this.selectionOverlay) {
+                    this.selectionOverlay.style.left = '';
+                    this.selectionOverlay.style.top = '';
+                    this.selectionOverlay.style.width = '';
+                    this.selectionOverlay.style.height = '';
+                    this.selectionOverlay.style.position = 'absolute';
+
+                    // ✅ Сбрасываем pointerEvents, чтобы overlay снова мог получать события
+                    this.selectionOverlay.style.pointerEvents = 'auto';
+
+                    // Сбрасываем display на случай, если он был изменён
+                    this.selectionOverlay.style.display = '';
+
+                    // Сбрасываем border и background
+                    this.selectionOverlay.style.border = '';
+                    this.selectionOverlay.style.backgroundColor = '';
+
+                    // ✅ Восстанавливаем исходные размеры overlay под размер canvas
+                    if (this.canvas) {
+                        this.selectionOverlay.style.width = `${this.canvas.clientWidth}px`;
+                        this.selectionOverlay.style.height = `${this.canvas.clientHeight}px`;
+                    }
+                }
+
+                // ✅ Дополнительно: если активен какой-то инструмент, обновляем его overlay
+                if (this.activeTool && this.activeTool !== this.tools.crop) {
+                    this.activeTool.setupOverlay(this.selectionOverlay);
+                    this.activeTool.updateOverlay();
+                }
+            }
+
+            // Сбрасываем активный слой после удаления
+            this.activeLayer = null;
             this.render();
+            this.updateLayersPanel();
         } catch (error) {
             console.error('Error in deleteActiveLayer:', error);
         }

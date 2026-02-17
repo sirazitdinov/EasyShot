@@ -11,8 +11,10 @@ export default class CropTool extends BaseTool {
     activate() {
         super.activate();
 
-        const activeLayer = this.editor.getActiveLayer?.();
-        this.currentLayer = activeLayer?.type === 'crop' ? activeLayer : null;
+        // Синхронизируем currentLayer с активным crop-слоем в редакторе
+        // Ищем именно crop-слой среди всех слоёв, а не просто активный слой
+        const cropLayer = this.editor.layerManager?.layers?.find(l => l.type === 'crop');
+        this.currentLayer = cropLayer || null;
 
         this.updateOverlay();
         this.editor.updateToolbarButtons?.();
@@ -40,17 +42,26 @@ export default class CropTool extends BaseTool {
     cleanupOverlay() {
         if (this.overlay) {
             this.overlay.classList.remove('crop-mode');
-            // ✅ Сбрасываем стили, чтобы другие инструменты могли работать
+
+            // ✅ Полностью сбрасываем все стили
             this.overlay.style.cursor = '';
-            this.overlay.style.pointerEvents = '';
+            this.overlay.style.pointerEvents = 'auto'; // ✅ Возвращаем в исходное состояние для работы других инструментов
             this.overlay.style.display = '';
             this.overlay.style.left = '';
             this.overlay.style.top = '';
             this.overlay.style.width = '';
             this.overlay.style.height = '';
+            this.overlay.style.position = 'absolute'; // Восстанавливаем исходное позиционирование
+            this.overlay.style.border = '';
+            this.overlay.style.backgroundColor = '';
+
+            // ✅ Сбрасываем clip-path или другие трансформации
+            this.overlay.style.clipPath = '';
+            this.overlay.style.filter = '';
         }
 
-        super.cleanupOverlay();
+        // Удаляем preview элемент, но не обнуляем this.overlay — он может понадобиться при следующем updateOverlay
+        this.removePreviewElement();
         this.currentLayer = null;
     }
 

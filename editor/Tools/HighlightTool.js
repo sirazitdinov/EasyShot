@@ -122,7 +122,7 @@ export default class HighlightTool extends BaseTool {
             this.overlay.style.cursor = '';
             this.overlay.style.border = '';
             // this.overlay.style.backgroundColor = '';
-            this.overlay.style.pointerEvents = '';
+            this.overlay.style.pointerEvents = 'auto'; // ✅ Возвращаем в исходное состояние для работы других инструментов
             this.overlay.style.display = '';
         }
         super.cleanupOverlay();

@@ -114,7 +114,7 @@ export default class LineTool extends BaseTool {
             // ✅ Сбрасываем стили, чтобы другие инструменты могли работать
             this.overlay.style.cursor = '';
             this.overlay.style.border = '';
-            this.overlay.style.pointerEvents = '';
+            this.overlay.style.pointerEvents = 'auto'; // ✅ Возвращаем в исходное состояние для работы других инструментов
             this.overlay.style.display = '';
         }
 
