@@ -380,7 +380,7 @@ input[type="color"] {
     display: flex;
     align-items: center;
     padding: 5px 10px;
-    gap: 10px;
+    gap: 8px;
     font-size: 12px;
     cursor: pointer;
     user-select: none;
@@ -395,19 +395,18 @@ input[type="color"] {
 
 .layer-item.active {
     background-color: var(--active-layer-bg);
+    border-left: 3px solid var(--highlight-color);
 }
 
 .layer-item:hover {
     background-color: var(--button-hover);
 }
 
-.layer-icon {
+.layer-icon-svg {
     width: 16px;
     height: 16px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 10px;
+    flex-shrink: 0;
+    filter: invert(90%) sepia(0%) saturate(0%) hue-rotate(180deg);
 }
 
 .layer-name {
@@ -441,4 +440,24 @@ input[type="color"] {
 .layer-item.insert-above::before,
 .layer-item.insert-below::after {
     opacity: 1 !important;
+}
+
+/* Inline-виджет редактирования текста */
+.text-editor-widget {
+    position: absolute;
+    z-index: 100;
+    background-color: rgba(255, 255, 255, 0.95);
+    border: 2px solid var(--highlight-color);
+    border-radius: 3px;
+    padding: 4px 8px;
+    font-family: Arial, sans-serif;
+    resize: none;
+    outline: none;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+    overflow: hidden;
+    line-height: 1.2;
+}
+
+.text-editor-widget:focus {
+    border-color: var(--button-active);
 }

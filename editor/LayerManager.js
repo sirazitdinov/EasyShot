@@ -245,6 +245,24 @@ export default class LayerManager {
 
     // ========= UI-обновления =========
 
+    /**
+     * Возвращает путь к иконке и отображаемое имя для типа слоя.
+     * Использует те же SVG-иконки, что и кнопки инструментов.
+     * @param {string} type
+     * @returns {{iconPath: string, name: string}}
+     */
+    getLayerTypeDisplay(type) {
+        const layerTypeMap = {
+            base: { iconPath: 'icons/Image.svg', name: 'Изображение' },
+            crop: { iconPath: 'icons/crop.svg', name: 'Кадрирование' },
+            blur: { iconPath: 'icons/droplet.svg', name: 'Размытие' },
+            highlight: { iconPath: 'icons/rectangle.svg', name: 'Выделение' },
+            line: { iconPath: 'icons/ArrowUpRight.svg', name: 'Стрелка' },
+            text: { iconPath: 'icons/TextCreation.svg', name: 'Текст' }
+        };
+        return layerTypeMap[type] || { iconPath: 'icons/Image.svg', name: type };
+    }
+
     updateLayersPanel() {
         if (!this.layersListElement) return;
 
@@ -254,6 +272,7 @@ export default class LayerManager {
         [...this.layers].reverse().forEach((layer, uiIndex) => {
             const logicalIndex = this.layers.length - 1 - uiIndex;
             const isActive = logicalIndex === this.activeLayerIndex;
+            const display = this.getLayerTypeDisplay(layer.type);
 
             const layerItem = document.createElement('div');
             layerItem.className = `layer-item ${isActive ? 'active' : ''}`;
@@ -262,8 +281,8 @@ export default class LayerManager {
 
             layerItem.innerHTML = `
                 <span class="layer-drag-handle">⋮</span>
-                <span class="layer-icon">${this.layers.length - uiIndex}</span>
-                <span class="layer-name">${layer.type}</span>
+                <img src="${display.iconPath}" alt="${display.name}" class="layer-icon-svg">
+                <span class="layer-name">${display.name}</span>
             `;
             this.layersListElement.appendChild(layerItem);
         });
