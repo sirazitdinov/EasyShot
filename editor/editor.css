@@ -446,7 +446,7 @@ input[type="color"] {
 .text-editor-widget {
     position: absolute;
     z-index: 100;
-    background-color: rgba(255, 255, 255, 0.95);
+    background-color: rgba(255, 255, 255, 0.5); /* Полупрозрачный фон */
     border: 2px solid var(--highlight-color);
     border-radius: 3px;
     padding: 4px 8px;

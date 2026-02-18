@@ -16,7 +16,7 @@ export default class CropTool extends BaseTool {
         const cropLayer = this.editor.layerManager?.layers?.find(l => l.type === 'crop');
         this.currentLayer = cropLayer || null;
 
-        this.updateOverlay();
+        // updateOverlay() вызывается в EditorCore.activateTool() после activate()
         this.editor.updateToolbarButtons?.();
     }
 

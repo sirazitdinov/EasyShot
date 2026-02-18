@@ -33,7 +33,7 @@ export default class LineTool extends BaseTool {
         const activeLayer = this.editor.getActiveLayer?.();
         this.currentLayer = activeLayer?.type === 'line' ? activeLayer : null;
 
-        this.updateOverlay();
+        // updateOverlay() вызывается в EditorCore.activateTool() после activate()
         this.editor.updateToolbarButtons?.();
     }
 

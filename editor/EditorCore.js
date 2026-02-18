@@ -276,6 +276,11 @@ export default class ImageEditor {
             // ✅ Сначала полностью сбрасываем overlay
             this.selectionOverlay.style.cssText = '';
             this.selectionOverlay.className = '';
+            
+            // ✅ Очищаем все дочерние элементы от предыдущего инструмента
+            while (this.selectionOverlay.firstChild) {
+                this.selectionOverlay.removeChild(this.selectionOverlay.firstChild);
+            }
 
             // ✅ Устанавливаем базовые размеры
             if (this.canvas) {
@@ -544,6 +549,23 @@ export default class ImageEditor {
      */
     setActiveLayer(layerId) {
         this.layerManager.setActiveLayerById(layerId);
+        
+        // Обновляем currentLayer у активного инструмента и overlay
+        if (this.activeTool) {
+            const activeLayer = this.layerManager.activeLayer;
+            if (this.activeTool.name === 'text') {
+                this.activeTool.currentLayer = activeLayer?.type === 'text' ? activeLayer : null;
+            } else if (this.activeTool.name === 'blur') {
+                this.activeTool.currentLayer = activeLayer?.type === 'blur' ? activeLayer : null;
+            } else if (this.activeTool.name === 'highlight') {
+                this.activeTool.currentLayer = activeLayer?.type === 'highlight' ? activeLayer : null;
+            } else if (this.activeTool.name === 'line') {
+                this.activeTool.currentLayer = activeLayer?.type === 'line' ? activeLayer : null;
+            } else if (this.activeTool.name === 'crop') {
+                this.activeTool.currentLayer = activeLayer?.type === 'crop' ? activeLayer : null;
+            }
+            this.activeTool.updateOverlay();
+        }
     }
 
     /**
@@ -1004,7 +1026,7 @@ export default class ImageEditor {
                 }
             }
 
-            // 2. Двойной клик → редактирование текста
+            // 2. Двойной клик → редактирование текста через prompt
             if (e.detail === 2 && hit?.type === 'text') {
                 e.preventDefault();
                 const newText = prompt('Введите текст:', hit.params.text || '');
@@ -1016,6 +1038,15 @@ export default class ImageEditor {
                     this.render();
                     this.updateLayersPanel();
                 }
+                return;
+            }
+
+            // 2a. Одинарный клик по текстовому слою с активным инструментом Текст → inline-редактирование
+            if (hit?.type === 'text' && this.activeTool?.name === 'text') {
+                this.activeLayer = hit;
+                this.activeTool.currentLayer = hit;
+                this.activeTool.editText(hit);
+                this.updateLayersPanel();
                 return;
             }
 
@@ -1182,11 +1213,22 @@ export default class ImageEditor {
                 const newLayer = this.layerManager.createLayerObject(initialOptions.type, initialOptions);
                 const created = this.addLayer(newLayer);
 
-                // Синхронизируем currentLayer у crop-инструмента после создания слоя
-                if (type === 'crop' && this.activeTool?.name === 'crop') {
-                    this.activeTool.currentLayer = created;
+                // Синхронизируем currentLayer у инструментов после создания слоя
+                if (this.activeTool) {
+                    if (type === 'crop' && this.activeTool.name === 'crop') {
+                        this.activeTool.currentLayer = created;
+                    } else if (type === 'text' && this.activeTool.name === 'text') {
+                        this.activeTool.currentLayer = created;
+                    } else if (type === 'blur' && this.activeTool.name === 'blur') {
+                        this.activeTool.currentLayer = created;
+                    } else if (type === 'highlight' && this.activeTool.name === 'highlight') {
+                        this.activeTool.currentLayer = created;
+                    } else if (type === 'line' && this.activeTool.name === 'line') {
+                        this.activeTool.currentLayer = created;
+                    }
                 }
 
+                // Для всех инструментов используем dragState
                 this.dragState = {
                     start: coords,
                     layer: created,
@@ -1301,6 +1343,16 @@ export default class ImageEditor {
      */
     onMouseUp(e) {
         try {
+            // Сначала вызываем handleMouseUp у инструмента, пока dragState еще не сброшен
+            try {
+                if (this.activeTool && typeof this.activeTool.handleMouseUp === 'function') {
+                    this.activeTool.handleMouseUp(e);
+                }
+            } catch (error) {
+                console.error('Error in tool.handleMouseUp', error);
+            }
+
+            // Затем сбрасываем dragState
             if (this.dragState) {
                 if (this.historyManager) {
                     this.historyManager.endAtomicOperation();
@@ -1315,14 +1367,6 @@ export default class ImageEditor {
             this.updateLayersPanel();
         } catch (error) {
             console.error('Error in onMouseUp:', error);
-        }
-
-        try {
-            if (this.activeTool && typeof this.activeTool.handleMouseUp === 'function') {
-                this.activeTool.handleMouseUp(e);
-            }
-        } catch (error) {
-            console.error('Error in tool.handleMouseUp', error);
         }
     }
 
