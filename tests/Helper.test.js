@@ -59,21 +59,28 @@ describe('Helper', () => {
       expect(Helper.getScaleFactor(canvas)).toBe(1)
     })
 
-    it('должен рассчитывать коэффициент масштабирования с DPR', () => {
+    it('должен рассчитывать коэффициент масштабирования как отношение clientWidth к width', () => {
       const canvas = { width: 800, clientWidth: 400 }
       const dpr = 2
       const result = Helper.getScaleFactor(canvas, dpr)
-      
-      // (400 / 800) * 2 = 1
-      expect(result).toBe(1)
+
+      // 400 / 800 = 0.5 (DPR больше не используется)
+      expect(result).toBe(0.5)
     })
 
     it('должен рассчитывать коэффициент масштабирования без DPR', () => {
       const canvas = { width: 800, clientWidth: 400 }
       const result = Helper.getScaleFactor(canvas)
-      
-      // (400 / 800) * 1 = 0.5
+
+      // 400 / 800 = 0.5
       expect(result).toBe(0.5)
+    })
+
+    it('должен возвращать 1 при одинаковых width и clientWidth', () => {
+      const canvas = { width: 800, clientWidth: 800 }
+      const result = Helper.getScaleFactor(canvas)
+
+      expect(result).toBe(1)
     })
   })
 
@@ -81,18 +88,26 @@ describe('Helper', () => {
     it('должен конвертировать пиксели канваса в CSS-пиксели', () => {
       const canvas = { width: 800, clientWidth: 400 }
       const dpr = 2
-      
-      // scaleFactor = (400 / 800) * 2 = 1
+
+      // scaleFactor = 400 / 800 = 0.5, 100 * 0.5 = 50
       const result = Helper.toCssPixels(100, canvas, dpr)
-      expect(result).toBe(100)
+      expect(result).toBe(50)
     })
 
     it('должен уменьшать значение при scaleFactor < 1', () => {
       const canvas = { width: 800, clientWidth: 400 }
       const result = Helper.toCssPixels(100, canvas, 1)
-      
+
       // scaleFactor = 0.5, 100 * 0.5 = 50
       expect(result).toBe(50)
+    })
+
+    it('должен возвращать то же значение при scaleFactor = 1', () => {
+      const canvas = { width: 800, clientWidth: 800 }
+      const result = Helper.toCssPixels(100, canvas)
+
+      // scaleFactor = 1, 100 * 1 = 100
+      expect(result).toBe(100)
     })
   })
 
@@ -100,25 +115,25 @@ describe('Helper', () => {
     it('должен конвертировать CSS-пиксели в пиксели канваса', () => {
       const canvas = { width: 800, clientWidth: 400 }
       const dpr = 2
-      
-      // scaleFactor = 1, 100 / 1 = 100
-      const result = Helper.toCanvasPixels(100, canvas, dpr)
+
+      // scaleFactor = 0.5, 50 / 0.5 = 100
+      const result = Helper.toCanvasPixels(50, canvas, dpr)
       expect(result).toBe(100)
     })
 
     it('должен увеличивать значение при scaleFactor < 1', () => {
       const canvas = { width: 800, clientWidth: 400 }
-      
+
       // scaleFactor = 0.5, 50 / 0.5 = 100
       const result = Helper.toCanvasPixels(50, canvas, 1)
       expect(result).toBe(100)
     })
 
-    it('должен возвращать 100 при scaleFactor === NaN (защита от деления на 0)', () => {
+    it('должен возвращать исходное значение при scaleFactor = 0 (защита от деления на 0)', () => {
       const canvas = { width: 0, clientWidth: 0 }
       const result = Helper.toCanvasPixels(100, canvas)
-      // При scale = NaN (0/0), проверка scale === 0 возвращает false, 
-      // поэтому возвращается cssValue / NaN = NaN, но getScaleFactor возвращает 1 при width = 0
+      // При width = 0 getScaleFactor возвращает 1 (защита)
+      // Поэтому 100 / 1 = 100
       expect(result).toBe(100)
     })
   })

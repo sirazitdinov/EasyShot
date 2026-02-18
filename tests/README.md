@@ -22,12 +22,14 @@ npm test -- --ui
 tests/
 ├── Helper.test.js          # Тесты утилит (deepMerge, конвертация координат)
 ├── HistoryManager.test.js  # Тесты истории (undo/redo, атомарные операции)
-└── LayerManager.test.js    # Тесты менеджера слоёв
+├── LayerManager.test.js    # Тесты менеджера слоёв
+├── HighlightTool.test.js   # Тесты инструмента выделения (HighlightTool)
+└── LineTool.test.js        # Тесты инструмента "Стрелка" (LineTool)
 ```
 
 ## Покрытие тестами
 
-### Helper.js (15 тестов)
+### Helper.js (17 тестов)
 - `deepMerge` — глубокое слияние объектов
 - `formatSize` — форматирование размеров
 - `getScaleFactor` — расчёт коэффициента масштабирования
@@ -51,6 +53,22 @@ tests/
 - `captureActiveLayerFromCanvas` / `restoreActiveLayerToCanvas` — синхронизация с холстом
 - `getLayerTypeDisplay` — иконки и имена слоёв
 - `destroy` — очистка менеджера
+
+### HighlightTool.js (31 тест)
+- `constructor` — инициализация с настройками по умолчанию
+- `activate` / `deactivate` — активация и деактивация инструмента
+- `getUISettingsConfig` — конфигурация UI настроек
+- `setupOverlay` / `cleanupOverlay` — настройка и очистка overlay
+- `updateOverlay` — обновление позиции и цвета рамки выделения
+- `updateSetting` — изменение цвета и толщины
+
+### LineTool.js (21 тест)
+- `constructor` — инициализация с настройками по умолчанию
+- `activate` / `deactivate` — активация и деактивация инструмента
+- `getUISettingsConfig` — конфигурация UI настроек
+- `setupOverlay` / `cleanupOverlay` — настройка и очистка overlay
+- `updateSetting` — изменение цвета и толщины линии
+- Интеграционные тесты — применение настроек к активному слою
 
 ## Добавление новых тестов
 
@@ -91,3 +109,9 @@ function createMockEditor() {
   }
 }
 ```
+
+## Статистика
+
+- **Всего тестов:** 133
+- **Файлов с тестами:** 5
+- **Покрытие модулей:** Helper, HistoryManager, LayerManager, HighlightTool, LineTool

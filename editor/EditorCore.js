@@ -796,27 +796,55 @@ export default class ImageEditor {
 
             if (layer.type === "line" && layer.points) {
                 const { x1, y1, x2, y2 } = layer.points;
+                const thickness = layer.params?.thickness ?? this.CONSTANTS?.LINE_WIDTH ?? 2;
+                const color = layer.params?.color ?? "#ff0000";
+
                 this.context.save();
-                this.context.strokeStyle = layer.params?.color ?? "#ff0000";
-                this.context.lineWidth = layer.params?.thickness ?? this.CONSTANTS?.LINE_WIDTH ?? 2;
+                this.context.strokeStyle = color;
+                this.context.fillStyle = color;
+                this.context.lineWidth = thickness;
+                this.context.lineCap = "round";
+
+                // Вычисляем угол и длину линии
+                const dx = x2 - x1;
+                const dy = y2 - y1;
+                const angle = Math.atan2(dy, dx);
+                const lineLength = Math.sqrt(dx * dx + dy * dy);
+
+                // Параметры стрелки-треугольника (с минимальными значениями для видимости)
+                const minThickness = Math.max(thickness, 3); // Минимум 3px для видимости
+                const arrowLength = 12 + minThickness * 1.5; // Длина треугольника
+                const arrowBaseWidth = minThickness * 2.5;   // Ширина основания
+
+                // Рисуем линию до начала треугольника (чтобы линия не выходила за кончик)
+                const lineEndX = x2 - arrowLength * Math.cos(angle);
+                const lineEndY = y2 - arrowLength * Math.sin(angle);
 
                 this.context.beginPath();
                 this.context.moveTo(x1, y1);
-                this.context.lineTo(x2, y2);
-
-                const angle = Math.atan2(y2 - y1, x2 - x1);
-                const arrowLength = 10;
-                this.context.lineTo(
-                    x2 - arrowLength * Math.cos(angle - Math.PI / 6),
-                    y2 - arrowLength * Math.sin(angle - Math.PI / 6)
-                );
-                this.context.moveTo(x2, y2);
-                this.context.lineTo(
-                    x2 - arrowLength * Math.cos(angle + Math.PI / 6),
-                    y2 - arrowLength * Math.sin(angle + Math.PI / 6)
-                );
-
+                this.context.lineTo(lineEndX, lineEndY);
                 this.context.stroke();
+
+                // Рисуем треугольную стрелку
+                // Перпендикулярный вектор для основания треугольника
+                const perpX = -Math.sin(angle);
+                const perpY = Math.cos(angle);
+
+                // Вершины треугольника
+                const tipX = x2;                    // Кончик стрелки
+                const tipY = y2;
+                const baseLeftX = lineEndX + perpX * (arrowBaseWidth / 2);   // Левое основание
+                const baseLeftY = lineEndY + perpY * (arrowBaseWidth / 2);
+                const baseRightX = lineEndX - perpX * (arrowBaseWidth / 2);  // Правое основание
+                const baseRightY = lineEndY - perpY * (arrowBaseWidth / 2);
+
+                this.context.beginPath();
+                this.context.moveTo(tipX, tipY);
+                this.context.lineTo(baseLeftX, baseLeftY);
+                this.context.lineTo(baseRightX, baseRightY);
+                this.context.closePath();
+                this.context.fill();
+
                 this.context.restore();
                 return;
             }
@@ -1003,6 +1031,36 @@ export default class ImageEditor {
     }
 
     /**
+     * Вычисляет расстояние от точки до отрезка
+     * @param {number} px - X координата точки
+     * @param {number} py - Y координата точки
+     * @param {number} x1 - X координата начала отрезка
+     * @param {number} y1 - Y координата начала отрезка
+     * @param {number} x2 - X координата конца отрезка
+     * @param {number} y2 - Y координата конца отрезка
+     * @returns {number} - Расстояние от точки до отрезка
+     */
+    pointToSegmentDistance(px, py, x1, y1, x2, y2) {
+        const dx = x2 - x1;
+        const dy = y2 - y1;
+        const lengthSquared = dx * dx + dy * dy;
+        
+        if (lengthSquared === 0) {
+            // Отрезок вырожден в точку
+            return Math.hypot(px - x1, py - y1);
+        }
+        
+        // Проекция точки на прямую, содержащую отрезок
+        let t = ((px - x1) * dx + (py - y1) * dy) / lengthSquared;
+        t = Math.max(0, Math.min(1, t)); // Ограничиваем проекцию отрезком
+        
+        const projX = x1 + t * dx;
+        const projY = y1 + t * dy;
+        
+        return Math.hypot(px - projX, py - projY);
+    }
+
+    /**
      * Обработчик события нажатия мыши на оверлее
      * @param {MouseEvent} e - Событие мыши
      */
@@ -1022,7 +1080,18 @@ export default class ImageEditor {
                 if (l.points) {
                     const d1 = Math.hypot(coords.x - l.points.x1, coords.y - l.points.y1);
                     const d2 = Math.hypot(coords.x - l.points.x2, coords.y - l.points.y2);
+                    
+                    // Проверка попадания в точки линии
                     if (d1 < 12 || d2 < 12) { hit = l; break; }
+                    
+                    // Проверка попадания в саму линию (расстояние от точки до отрезка)
+                    const distToSegment = this.pointToSegmentDistance(
+                        coords.x, coords.y,
+                        l.points.x1, l.points.y1,
+                        l.points.x2, l.points.y2
+                    );
+                    const hitTolerance = Math.max(10, (l.params?.thickness || 2) + 5);
+                    if (distToSegment < hitTolerance) { hit = l; break; }
                 }
             }
 
@@ -1919,26 +1988,49 @@ export default class ImageEditor {
                             return;
                         }
 
-                        tempCtx.strokeStyle = layer.params.color;
-                        tempCtx.lineWidth = layer.params.thickness || 2;
+                        const thickness = layer.params.thickness || 2;
+                        const color = layer.params.color;
+                        
+                        tempCtx.strokeStyle = color;
+                        tempCtx.fillStyle = color;
+                        tempCtx.lineWidth = thickness;
+                        tempCtx.lineCap = "round";
+
+                        // Вычисляем угол и длину линии
+                        const dx = x2 - x1;
+                        const dy = y2 - y1;
+                        const angle = Math.atan2(dy, dx);
+                        
+                        // Параметры стрелки-треугольника
+                        const arrowLength = 15 + thickness * 0.8;
+                        const arrowBaseWidth = thickness * 2;
+                        
+                        // Рисуем линию до начала треугольника
+                        const lineEndX = x2 - arrowLength * Math.cos(angle);
+                        const lineEndY = y2 - arrowLength * Math.sin(angle);
+                        
                         tempCtx.beginPath();
                         tempCtx.moveTo(x1, y1);
-                        tempCtx.lineTo(x2, y2);
-
-                        // Рисуем стрелку на конце
-                        const angle = Math.atan2(y2 - y1, x2 - x1);
-                        const arrowLength = 10;
-                        tempCtx.lineTo(
-                            x2 - arrowLength * Math.cos(angle - Math.PI / 6),
-                            y2 - arrowLength * Math.sin(angle - Math.PI / 6)
-                        );
-                        tempCtx.moveTo(x2, y2);
-                        tempCtx.lineTo(
-                            x2 - arrowLength * Math.cos(angle + Math.PI / 6),
-                            y2 - arrowLength * Math.sin(angle + Math.PI / 6)
-                        );
-
+                        tempCtx.lineTo(lineEndX, lineEndY);
                         tempCtx.stroke();
+
+                        // Рисуем треугольную стрелку
+                        const perpX = -Math.sin(angle);
+                        const perpY = Math.cos(angle);
+                        
+                        const tipX = x2;
+                        const tipY = y2;
+                        const baseLeftX = lineEndX + perpX * (arrowBaseWidth / 2);
+                        const baseLeftY = lineEndY + perpY * (arrowBaseWidth / 2);
+                        const baseRightX = lineEndX - perpX * (arrowBaseWidth / 2);
+                        const baseRightY = lineEndY - perpY * (arrowBaseWidth / 2);
+                        
+                        tempCtx.beginPath();
+                        tempCtx.moveTo(tipX, tipY);
+                        tempCtx.lineTo(baseLeftX, baseLeftY);
+                        tempCtx.lineTo(baseRightX, baseRightY);
+                        tempCtx.closePath();
+                        tempCtx.fill();
                     }
                 });
             }

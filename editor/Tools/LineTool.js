@@ -12,7 +12,6 @@ export default class LineTool extends BaseTool {
         };
 
         this.currentLayer = null;
-        this.linePreview = null;
     }
 
     activate() {
@@ -65,19 +64,6 @@ export default class LineTool extends BaseTool {
         };
     }
 
-    // Метод для обновления настроек (вызывается из UI)
-    updateSetting(key, value) {
-        if (this.validateSetting(key, value)) {
-            this.settings[key] = value;
-            this.notifyObservers(); // Уведомить о изменении (Observer pattern)
-        }
-    }
-
-    // Валидация (например, толщина должна быть положительной)
-    validateSetting(key, value) {
-        // Логика валидации
-    }
-
     setupOverlay(overlayElement) {
         super.setupOverlay(overlayElement);
         if (!this.overlay) return;
@@ -85,69 +71,27 @@ export default class LineTool extends BaseTool {
         this.overlay.classList.add('line-mode');
         this.overlay.style.cursor = 'crosshair';
         this.overlay.style.border = 'none';
-        // this.overlay.style.backgroundColor = 'transparent';
         this.overlay.style.pointerEvents = 'auto';
 
-        // создаём DOM-превью через общий механизм BaseTool
-        if (!this.previewElement) {
-            const el = this.createPreviewElement('linePreview', 'line-preview');
-            if (el) {
-                this.linePreview = el;
-                this.linePreview.style.position = 'absolute';
-                this.linePreview.style.top = '0';
-                this.linePreview.style.left = '0';
-                this.linePreview.style.transformOrigin = '0 0';
-                this.linePreview.style.height = '1px';
-                this.linePreview.style.borderStyle = 'solid';
-                this.linePreview.style.display = 'none';
-            }
-        } else {
-            this.linePreview = this.previewElement;
-        }
-
-        this.updateOverlay();
+        // Preview-бокс для линии не используется — выделение работает через hit-test
+        // Оставляем возможность создания в будущем при необходимости
     }
 
     cleanupOverlay() {
         if (this.overlay) {
             this.overlay.classList.remove('line-mode');
-            // ✅ Сбрасываем стили, чтобы другие инструменты могли работать
             this.overlay.style.cursor = '';
             this.overlay.style.border = '';
-            this.overlay.style.pointerEvents = 'auto'; // ✅ Возвращаем в исходное состояние для работы других инструментов
+            this.overlay.style.pointerEvents = 'auto';
             this.overlay.style.display = '';
         }
-
-        this.linePreview = null;
 
         super.cleanupOverlay();
     }
 
     updateOverlay() {
-        if (!this.linePreview || !this.currentLayer?.points) {
-            if (this.linePreview) {
-                this.linePreview.style.display = 'none';
-            }
-            return;
-        }
-
-        const canvas = this.editor?.canvas;
-        if (!canvas) return;
-
-        const {x1, y1, x2, y2} = this.currentLayer.points;
-        const dx = x2 - x1;
-        const dy = y2 - y1;
-        const len = Math.sqrt(dx * dx + dy * dy) || 1;
-        const angle = (Math.atan2(dy, dx) * 180) / Math.PI;
-
-        // Используем единую утилиту для конвертации координат канваса в CSS-пиксели
-        this.linePreview.style.left = `${Helper.toCssPixels(x1, canvas)}px`;
-        this.linePreview.style.top = `${Helper.toCssPixels(y1, canvas)}px`;
-        this.linePreview.style.width = `${Helper.toCssPixels(len, canvas)}px`;
-        this.linePreview.style.transform = `rotate(${angle}deg)`;
-        this.linePreview.style.borderColor = this.settings.color;
-        this.linePreview.style.borderWidth = `${this.settings.thickness}px`;
-        this.linePreview.style.display = 'block';
+        // Preview-бокс не используется для линий
+        // Выделение и перемещение работают через hit-test в EditorCore
     }
 
     handleMouseDown(event) {
@@ -165,7 +109,6 @@ export default class LineTool extends BaseTool {
         super.cancelOperation();
         this.currentLayer = null;
         this.isDrawing = false;
-        if (this.linePreview) this.linePreview.style.display = 'none';
     }
 
     /**

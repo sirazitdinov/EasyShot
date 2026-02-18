@@ -79,9 +79,9 @@ export default class HighlightTool extends BaseTool {
         this.overlay.style.pointerEvents = 'auto';
 
         if (!this.previewElement) {
-            const el = this.createPreviewElement('blurPreview', 'highlight-preview');
+            const el = this.createPreviewElement('highlightPreview', 'highlight-preview');
             if (el) {
-                this.highlightPreview = el;
+                // this.highlightPreview = el;
                 // this.highlightPreview.style.cursor = 'crosshair';
                 // this.highlightPreview.style.border = 'none';
                 // this.highlightPreview.style.backgroundColor = 'transparent';
@@ -91,28 +91,32 @@ export default class HighlightTool extends BaseTool {
     }
 
     updateOverlay() {
-
-        if (!this.previewElement || !this.currentLayer?.rect) {
-            if (this.previewElement) this.previewElement.style.display = 'none';
-            return;
-        }
-
         const canvas = this.editor?.canvas;
-        if (!canvas) return;
+        if (!canvas || !this.previewElement) return;
 
-        const { x, y, width, height } = this.currentLayer.rect;
+        // Всегда берем актуальный активный слой из редактора
+        const activeLayer = this.editor.getActiveLayer?.();
+        const layer = (activeLayer?.type === 'highlight') ? activeLayer : this.currentLayer;
 
-        const el = this.previewElement;
-        el.style.position = 'absolute';
-        // Используем единую утилиту для конвертации координат канваса в CSS-пиксели
-        el.style.left = `${Helper.toCssPixels(x, canvas)}px`;
-        el.style.top = `${Helper.toCssPixels(y, canvas)}px`;
-        el.style.width = `${Helper.toCssPixels(width, canvas)}px`;
-        el.style.height = `${Helper.toCssPixels(height, canvas)}px`;
-        el.style.border = `2px dashed ${this.settings.color}`;
-        // el.style.backgroundColor = `${this.settings.color}33`;
-        el.style.boxSizing = 'border-box';
-        el.style.display = 'block';
+        // Если есть слой выделения с rect - показываем рамку
+        if (layer?.rect) {
+            const { x, y, width, height } = layer.rect;
+
+            const el = this.previewElement;
+            el.style.position = 'absolute';
+            // Используем единую утилиту для конвертации координат канваса в CSS-пиксели
+            el.style.left = `${Helper.toCssPixels(x, canvas)}px`;
+            el.style.top = `${Helper.toCssPixels(y, canvas)}px`;
+            el.style.width = `${Helper.toCssPixels(width, canvas)}px`;
+            el.style.height = `${Helper.toCssPixels(height, canvas)}px`;
+            el.style.border = `2px dashed ${this.settings.color}`;
+            // el.style.backgroundColor = `${this.settings.color}33`;
+            el.style.boxSizing = 'border-box';
+            el.style.display = 'block';
+        } else {
+            // Если нет активного слоя выделения - скрываем рамку
+            this.previewElement.style.display = 'none';
+        }
     }
 
     cleanupOverlay() {
