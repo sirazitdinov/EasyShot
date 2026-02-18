@@ -247,4 +247,20 @@ export default class HistoryManager {
         }
         return this.history[this.position].label || `Шаг ${this.position}`;
     }
+
+    destroy() {
+        try {
+            // Очищаем историю
+            this.history = [];
+            this.position = -1;
+            this.atomicSnapshot = null;
+
+            // Очищаем ссылки
+            this.editor = null;
+
+            console.log('HistoryManager destroyed successfully');
+        } catch (error) {
+            console.error('Error during HistoryManager destruction:', error);
+        }
+    }
 }

@@ -336,4 +336,25 @@ export default class LayerManager {
             }
         });
     }
+
+    destroy() {
+        try {
+            // Очищаем drag-and-drop состояние
+            this.dragState = null;
+
+            // Очищаем список слоёв
+            this.layers = [];
+            this.activeLayerIndex = -1;
+
+            // Очищаем ссылку на DOM-элемент
+            this.layersListElement = null;
+
+            // Очищаем ссылку на редактор
+            this.editor = null;
+
+            console.log('LayerManager destroyed successfully');
+        } catch (error) {
+            console.error('Error during LayerManager destruction:', error);
+        }
+    }
 }

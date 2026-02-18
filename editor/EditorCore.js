@@ -25,6 +25,45 @@ export default class ImageEditor {
             if (this.historyManager) this.historyManager.undo();
         };
 
+        // Обработчики для кнопок
+        this.boundFileClick = () => this.fileInput.click();
+        this.boundFileChange = (e) => this.loadImage(e.target.files[0]);
+        this.boundSaveClick = () => {
+            this.applyCrop();
+            this.saveImage();
+        };
+        this.boundRedoClick = () => {
+            if (this.historyManager) this.historyManager.redo();
+        };
+
+        // Обработчики для инструментов
+        this.boundCropClick = () => this.setActiveTool(this.tools.crop);
+        this.boundBlurClick = () => this.setActiveTool(this.tools.blur);
+        this.boundHighlightClick = () => this.setActiveTool(this.tools.highlight);
+        this.boundLineClick = () => this.setActiveTool(this.tools.line);
+        this.boundTextClick = () => this.setActiveTool(this.tools.text);
+
+        // Обработчики для событий окна и документа
+        this.boundResize = () => this.updateCanvasDisplay();
+        this.boundLayersListClick = (e) => {
+            const layerItem = e.target.closest('.layer-item');
+            if (layerItem) {
+                this.setActiveLayer(layerItem.dataset.layerId);
+            }
+        };
+        this.boundKeyDown = (e) => {
+            if (e.key === 'Delete' && this.layerManager.activeLayer) {
+                e.preventDefault();
+                this.deleteActiveLayer();
+            }
+        };
+
+        // Обработчики для мыши
+        this.boundMouseMove = (e) => this.onMouseMove(e);
+        this.boundMouseUp = (e) => this.onMouseUp(e);
+        this.boundOverlayMouseDown = (e) => this.onOverlayMouseDown(e);
+        this.boundOverlayHover = (e) => this.onOverlayHover(e);
+
         // Инициализация
         this.init();
     }
@@ -300,19 +339,11 @@ export default class ImageEditor {
      */
     initEventListeners() {
         // Загрузка изображения
-        document.getElementById('fileBtn').addEventListener('click', () => {
-            this.fileInput.click();
-        });
-
-        this.fileInput.addEventListener('change', (e) => {
-            this.loadImage(e.target.files[0]);
-        });
+        document.getElementById('fileBtn').addEventListener('click', this.boundFileClick);
+        this.fileInput.addEventListener('change', this.boundFileChange);
 
         // Сохранение изображения
-        document.getElementById('saveBtn').addEventListener('click', () => {
-            this.applyCrop();
-            this.saveImage();
-        });
+        document.getElementById('saveBtn').addEventListener('click', this.boundSaveClick);
 
         // Отмена действия
         const undoBtn = document.getElementById('undoBtn');
@@ -321,64 +352,32 @@ export default class ImageEditor {
         // Повторить действие
         const redoBtn = document.getElementById('redoBtn');
         if (redoBtn) {
-            redoBtn.addEventListener('click', () => {
-                if (this.historyManager) {
-                    this.historyManager.redo();
-                }
-            });
+            redoBtn.addEventListener('click', this.boundRedoClick);
         }
 
         // Кнопки инструментов
-        document.getElementById('cropBtn').addEventListener('click', () => {
-            this.setActiveTool(this.tools.crop);
-        });
-
-        document.getElementById('blurBtn').addEventListener('click', () => {
-            this.setActiveTool(this.tools.blur);
-        });
-
-        document.getElementById('highlightBtn').addEventListener('click', () => {
-            this.setActiveTool(this.tools.highlight);
-        });
-
-        document.getElementById('lineBtn').addEventListener('click', () => {
-            this.setActiveTool(this.tools.line);
-        });
-
-        document.getElementById('textBtn').addEventListener('click', () => {
-            this.setActiveTool(this.tools.text);
-        });
+        document.getElementById('cropBtn').addEventListener('click', this.boundCropClick);
+        document.getElementById('blurBtn').addEventListener('click', this.boundBlurClick);
+        document.getElementById('highlightBtn').addEventListener('click', this.boundHighlightClick);
+        document.getElementById('lineBtn').addEventListener('click', this.boundLineClick);
+        document.getElementById('textBtn').addEventListener('click', this.boundTextClick);
 
         // Обработка изменения размера окна
-        window.addEventListener('resize', () => {
-            this.updateCanvasDisplay();
-        });
+        window.addEventListener('resize', this.boundResize);
 
         // Слои
-        document.getElementById('layersList').addEventListener('click', (e) => {
-            const layerItem = e.target.closest('.layer-item');
-            if (layerItem) {
-                const layerId = layerItem.dataset.layerId;
-                this.setActiveLayer(layerId);
-            }
-        });
+        document.getElementById('layersList').addEventListener('click', this.boundLayersListClick);
 
         // Удаление слоя по Delete
-        document.addEventListener('keydown', (e) => {
-            if (e.key === 'Delete' && this.layerManager.activeLayer) {
-                e.preventDefault(); // Предотвращаем повторное срабатывание при удержании клавиши
-                this.deleteActiveLayer();
-            }
-        });
+        document.addEventListener('keydown', this.boundKeyDown);
 
-        document.addEventListener('mousemove', (e) => this.onMouseMove(e));
-        document.addEventListener('mouseup', (e) => this.onMouseUp(e));
-
+        // Обработчики для мыши
+        document.addEventListener('mousemove', this.boundMouseMove);
+        document.addEventListener('mouseup', this.boundMouseUp);
 
         // Привязка обработчиков для selectionOverlay
-        this.selectionOverlay.addEventListener('mousedown', (e) => this.onOverlayMouseDown(e));
-        this.selectionOverlay.addEventListener('mousemove', (e) => this.onOverlayHover(e));
-
+        this.selectionOverlay.addEventListener('mousedown', this.boundOverlayMouseDown);
+        this.selectionOverlay.addEventListener('mousemove', this.boundOverlayHover);
 
         // Перетаскивание слоев
         this.setupLayerDragAndDrop();
@@ -1876,7 +1875,7 @@ export default class ImageEditor {
                             return;
                         }
 
-                        tempCtx.strokeStyle = layer.points.color;
+                        tempCtx.strokeStyle = layer.params.color;
                         tempCtx.lineWidth = layer.params.thickness || 2;
                         tempCtx.beginPath();
                         tempCtx.moveTo(x1, y1);
@@ -2091,42 +2090,39 @@ export default class ImageEditor {
     destroy() {
         try {
             // Удаляем обработчики событий с DOM-элементов
-            document.getElementById('fileBtn')?.removeEventListener('click', this.fileInput.click);
-            this.fileInput?.removeEventListener('change', this.loadImage);
+            document.getElementById('fileBtn')?.removeEventListener('click', this.boundFileClick);
+            this.fileInput?.removeEventListener('change', this.boundFileChange);
 
-            document.getElementById('saveBtn')?.removeEventListener('click', this.applyCropAndSave);
+            document.getElementById('saveBtn')?.removeEventListener('click', this.boundSaveClick);
 
             const undoBtn = document.getElementById('undoBtn');
             if (undoBtn) undoBtn.removeEventListener('click', this.boundUndoClick);
-            // document.getElementById('undoBtn')?.removeEventListener('click', this.undo);
 
-            document.getElementById('cropBtn')?.removeEventListener('click', this.setActiveTool);
-            document.getElementById('blurBtn')?.removeEventListener('click', this.setActiveTool);
-            document.getElementById('highlightBtn')?.removeEventListener('click', this.setActiveTool);
-            document.getElementById('lineBtn')?.removeEventListener('click', this.setActiveTool);
-            document.getElementById('textBtn')?.removeEventListener('click', this.setActiveTool);
+            const redoBtn = document.getElementById('redoBtn');
+            if (redoBtn) redoBtn.removeEventListener('click', this.boundRedoClick);
 
-            window?.removeEventListener('resize', this.updateCanvasDisplay);
+            document.getElementById('cropBtn')?.removeEventListener('click', this.boundCropClick);
+            document.getElementById('blurBtn')?.removeEventListener('click', this.boundBlurClick);
+            document.getElementById('highlightBtn')?.removeEventListener('click', this.boundHighlightClick);
+            document.getElementById('lineBtn')?.removeEventListener('click', this.boundLineClick);
+            document.getElementById('textBtn')?.removeEventListener('click', this.boundTextClick);
 
-            document.getElementById('layersList')?.removeEventListener('click', this.setActiveLayer);
-            document.removeEventListener('keydown', this.deleteActiveLayer);
+            window?.removeEventListener('resize', this.boundResize);
 
-            document.removeEventListener('mousemove', this.onMouseMove);
-            document.removeEventListener('mouseup', this.onMouseUp);
+            document.getElementById('layersList')?.removeEventListener('click', this.boundLayersListClick);
+            document.removeEventListener('keydown', this.boundKeyDown);
+
+            document.removeEventListener('mousemove', this.boundMouseMove);
+            document.removeEventListener('mouseup', this.boundMouseUp);
 
             // Удаляем обработчики с selectionOverlay
-            this.selectionOverlay?.removeEventListener('mousedown', this.onOverlayMouseDown);
-            this.selectionOverlay?.removeEventListener('mousemove', this.onOverlayHover);
+            this.selectionOverlay?.removeEventListener('mousedown', this.boundOverlayMouseDown);
+            this.selectionOverlay?.removeEventListener('mousemove', this.boundOverlayHover);
 
             // Удаляем обработчики с активного инструмента
-            if (this.activeTool) {
+            if (this.activeTool && typeof this.activeTool.deactivate === 'function') {
                 this.activeTool.deactivate();
             }
-
-            // Удаляем обработчики с selectionOverlay для инструментов
-            this.selectionOverlay?.removeEventListener('mousedown', this.boundToolMouseDown);
-            this.selectionOverlay?.removeEventListener('mousemove', this.boundToolMouseMove);
-            this.selectionOverlay?.removeEventListener('mouseup', this.boundToolMouseUp);
 
             // Очищаем ссылки на DOM-элементы
             this.canvas = null;
@@ -2142,12 +2138,21 @@ export default class ImageEditor {
             this.image = null;
             this.originalImage = null;
 
-            // Очищаем историю
-            this.history = [];
-            this.historyPosition = -1;
+            // Очищаем инструменты
+            this.tools = null;
+            this.activeTool = null;
+
+            // Очищаем настройки
+            this.toolSettings = null;
+            this.settingsElements = null;
 
             // Уничтожаем менеджер слоев
             this.layerManager?.destroy();
+            this.layerManager = null;
+
+            // Уничтожаем историю
+            this.historyManager?.destroy();
+            this.historyManager = null;
 
             console.log('ImageEditor destroyed successfully');
         } catch (error) {
