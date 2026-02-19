@@ -213,7 +213,9 @@ export default class ImageEditor {
      * Инициализирует начальное состояние
      */
     initializeState() {
-        // Инициализация других состояний
+        // Состояние для троттлинга onMouseMove через requestAnimationFrame
+        this._rafId = null;
+        this._pendingDragState = null;
     }
 
     /**
@@ -1333,8 +1335,44 @@ export default class ImageEditor {
      * @param {MouseEvent} e - Событие мыши
      */
     onMouseMove(e) {
+        // Сохраняем данные для отложенной отрисовки через requestAnimationFrame
+        this._pendingDragState = { e, dragState: { ...this.dragState } };
+
+        // Отменяем предыдущий кадр, если он ещё не выполнен
+        if (this._rafId) {
+            cancelAnimationFrame(this._rafId);
+        }
+
+        // Запрашиваем следующий кадр анимации
+        this._rafId = requestAnimationFrame(() => {
+            this._processDragFrame();
+        });
+
+        // Вызываем handleMouseMove у инструмента без троттлинга (для UI/превью)
         try {
-            if (!this.dragState) return;
+            if (this.activeTool && typeof this.activeTool.handleMouseMove === 'function') {
+                this.activeTool.handleMouseMove(e);
+            }
+        } catch (error) {
+            console.error('Error in tool.handleMouseMove', error);
+        }
+    }
+
+    /**
+     * Обрабатывает один кадр перетаскивания/изменения размера
+     * Вызывается внутри requestAnimationFrame
+     */
+    _processDragFrame() {
+        this._rafId = null;
+        const pending = this._pendingDragState;
+        this._pendingDragState = null;
+
+        if (!pending || !pending.dragState) return;
+
+        const { e, dragState } = pending;
+
+        try {
+            if (!dragState) return;
 
             // Проверяем, что e и canvas существуют
             if (!e || !this.canvas) {
@@ -1343,7 +1381,7 @@ export default class ImageEditor {
             }
 
             const coords = this.getCanvasCoords(e);
-            const { handle, layer, start, orig } = this.dragState;
+            const { handle, layer, start, orig } = dragState;
 
             // Проверяем, что все необходимые объекты существуют
             if (!layer || !start || !orig) {
@@ -1395,14 +1433,6 @@ export default class ImageEditor {
             this.render();
         } catch (error) {
             console.error('Error in onMouseMove:', error);
-        }
-
-        try {
-            if (this.activeTool && typeof this.activeTool.handleMouseMove === 'function') {
-                this.activeTool.handleMouseMove(e);
-            }
-        } catch (error) {
-            console.error('Error in tool.handleMouseMove', error);
         }
     }
 
@@ -1757,411 +1787,575 @@ export default class ImageEditor {
      */
     applyCrop() {
         try {
-            // Проверяем, что все необходимые компоненты существуют
-            if (!this.layerManager || !this.layerManager.layers) {
-                console.error('Layer manager or layers not initialized');
-                return;
-            }
+            // 1. Валидация и подготовка
+            const cropData = this._validateCropData();
+            if (!cropData) return;
 
-            const cropLayer = this.layerManager.layers.find(l => l.type === 'crop');
+            // 2. Расчёт координат кропа в пространстве оригинального изображения
+            const cropCoords = this._calculateCropCoordinates(cropData.cropLayer.rect);
+            if (!cropCoords) return;
 
-            if (!cropLayer || !cropLayer.rect) {
-                console.warn('No crop layer found or crop rectangle is invalid');
-                return;
-            }
+            // 3. Создание временного canvas и отрисовка кропнутого изображения
+            const { tempCanvas, tempCtx } = this._createCroppedCanvas(cropCoords);
+            if (!tempCanvas) return;
 
-            // Проверяем, что canvas и selectionOverlay существуют
-            if (!this.canvas || !this.selectionOverlay) {
-                console.error('Canvas or selection overlay not found');
-                return;
-            }
+            // 4. Применение эффектов слоёв к кропнутому изображению
+            this._applyLayersToCroppedCanvas(tempCtx, cropCoords, cropData.cropLayer);
 
-            this.selectionOverlay.style.width = `${this.canvas.clientWidth}px`;
-            this.selectionOverlay.style.height = `${this.canvas.clientHeight}px`;
+            // 5. Обновление основного canvas и данных изображения
+            this._updateCanvasWithCroppedImage(tempCanvas, cropCoords);
 
-            const { x, y, width, height } = cropLayer.rect;
+            // 6. Пересчёт координат слоёв и удаление crop-слоя
+            this._updateLayersAfterCrop(cropCoords, cropData.cropLayer);
 
-            if (width <= 0 || height <= 0) {
-                console.warn('Invalid crop dimensions');
-                return;
-            }
+            // 7. Финализация: история, UI, сброс инструмента
+            this._finalizeCrop(cropData.cropLayer);
 
-            // Ensure original image is loaded before proceeding
-            if (!this.originalImage || !this.originalImage.complete) {
-                console.error('Original image not loaded');
-                return;
-            }
-
-            // Convert coordinates from canvas space to original image space
-            // The canvas might be displayed at a different size than its internal resolution
-            // So we need to map the crop coordinates properly
-            // We need to determine the relationship between current canvas and original image
-            // Since the canvas might have been modified by previous crops, we need to calculate
-            // the current scale based on the ratio of current canvas to original image
-
-            // Calculate the scale factors based on current canvas vs original image
-            const currentCanvasScaleX = this.canvas.width / this.originalImage.naturalWidth;
-            const currentCanvasScaleY = this.canvas.height / this.originalImage.naturalHeight;
-
-            // Validate scale factors to prevent division by zero
-            if (currentCanvasScaleX <= 0 || currentCanvasScaleY <= 0) {
-                console.error('Invalid canvas scale factors');
-                return;
-            }
-
-            // Convert the crop coordinates from current canvas space to original image space
-            const origCropX = Math.round(x / currentCanvasScaleX);
-            const origCropY = Math.round(y / currentCanvasScaleY);
-            const origCropWidth = Math.round(width / currentCanvasScaleX);
-            const origCropHeight = Math.round(height / currentCanvasScaleY);
-
-            // Ensure the calculated crop area is within the bounds of the original image
-            let validX = Math.max(0, Math.min(origCropX, this.originalImage.naturalWidth - origCropWidth));
-            let validY = Math.max(0, Math.min(origCropY, this.originalImage.naturalHeight - origCropHeight));
-            const validWidth = Math.min(origCropWidth, this.originalImage.width - validX);
-            const validHeight = Math.min(origCropHeight, this.originalImage.height - validY);
-
-            if (validWidth <= 0 || validHeight <= 0) {
-                console.warn('Calculated crop area is invalid');
-                return;
-            }
-
-            // Создание нового холста для кадрированного изображения
-            const tempCanvas = document.createElement('canvas');
-            if (!tempCanvas) {
-                console.error('Could not create temporary canvas');
-                return;
-            }
-
-            const tempCtx = tempCanvas.getContext('2d');
-            if (!tempCtx) {
-                console.error('Could not get 2D context for temporary canvas');
-                return;
-            }
-
-            tempCanvas.width = validWidth;
-            tempCanvas.height = validHeight;
-
-            // 1. Рисуем оригинальное изображение в области кропа
-            tempCtx.drawImage(
-                this.originalImage,
-                validX, validY, validWidth, validHeight,
-                0, 0, validWidth, validHeight
-            );
-
-            // 2. Применяем эффекты (blur, highlight, line, text) только к видимым частям в области кропа
-            // Фильтруем crop слой и применяем остальные
-            if (this.layerManager.layers && Array.isArray(this.layerManager.layers)) {
-                this.layerManager.layers.filter(l => l.type !== 'crop').forEach(layer => {
-                    // Для прямоугольных слоев проверяем попадание в область кропа
-                    if (layer.rect) {
-                        // Convert layer coordinates to original image space before applying crop offset
-                        const layerOrigX = Math.round(layer.rect.x / currentCanvasScaleX);
-                        const layerOrigY = Math.round(layer.rect.y / currentCanvasScaleY);
-
-                        const layerX = layerOrigX - validX; // смещение относительно кропа
-                        const layerY = layerOrigY - validY;
-
-                        // Calculate original dimensions
-                        const layerOrigWidth = Math.round(layer.rect.width / currentCanvasScaleX);
-                        const layerOrigHeight = Math.round(layer.rect.height / currentCanvasScaleY);
-
-                        // Пропускаем слои полностью вне области кропа
-                        if (layerX + layerOrigWidth < 0 || layerY + layerOrigHeight < 0 ||
-                            layerX > validWidth || layerY > validHeight) return;
-
-                        if (layer.type === 'blur') {
-                            // смещённые координаты относительно кропа
-                            const shiftedX = layerOrigX - validX;
-                            const shiftedY = layerOrigY - validY;
-                            const shiftedR = shiftedX + layerOrigWidth;
-                            const shiftedB = shiftedY + layerOrigHeight;
-
-                            // Границы кроп-области
-                            const cropLeft = 0, cropTop = 0, cropRight = validWidth, cropBottom = validHeight;
-
-                            // Находим пересечение (видимую часть)
-                            const visibleLeft = Math.max(cropLeft, shiftedX);
-                            const visibleTop = Math.max(cropTop, shiftedY);
-                            const visibleRight = Math.min(cropRight, shiftedR);
-                            const visibleBottom = Math.min(cropBottom, shiftedB);
-                            const visibleWidth = visibleRight - visibleLeft;
-                            const visibleHeight = visibleBottom - visibleTop;
-
-                            // Пропускаем, если пересечения нет
-                            if (visibleWidth <= 0 || visibleHeight <= 0) return;
-
-                            tempCtx.save();
-                            tempCtx.filter = `blur(${layer.params.radius}px)`;
-                            tempCtx.beginPath();
-                            tempCtx.rect(0, 0, validWidth, validHeight);
-                            tempCtx.clip();
-
-                            // Источник: смещённые координаты НА ИСХОДНОМ ИЗОБРАЖЕНИИ — layer.rect.x, layer.rect.y!
-                            const srcX = layerOrigX + (visibleLeft - shiftedX); // = layer.rect.x + отступ от левого края пересечения
-                            const srcY = layerOrigY + (visibleTop - shiftedY);
-                            // Размеры источника = размерам пересечения (1:1, без масштаба)
-                            const srcW = visibleWidth;
-                            const srcH = visibleHeight;
-
-                            // Назначение: видимая часть внутри кропа
-                            const dstX = visibleLeft;
-                            const dstY = visibleTop;
-
-                            tempCtx.drawImage(
-                                this.originalImage,
-                                srcX, srcY, srcW, srcH,
-                                dstX, dstY, srcW, srcH
-                            );
-                            tempCtx.restore();
-                        }
-                        else if (layer.type === 'highlight') {
-                            // Задаем цвет и толщину линий
-                            tempCtx.strokeStyle = layer.params.color;
-                            tempCtx.lineWidth = layer.params.thickness || this.LINE_WIDTH;
-
-                            // смещённые координаты относительно кропа
-                            const shiftedX = layerOrigX - validX;
-                            const shiftedY = layerOrigY - validY;
-                            const shiftedR = shiftedX + layerOrigWidth;
-                            const shiftedB = shiftedY + layerOrigHeight;
-
-                            // Границы кроп-области
-                            const cropLeft = 0, cropTop = 0, cropRight = validWidth, cropBottom = validHeight;
-
-                            // Находим пересечение (видимую часть)
-                            const visibleLeft = Math.max(cropLeft, shiftedX);
-                            const visibleTop = Math.max(cropTop, shiftedY);
-                            const visibleRight = Math.min(cropRight, shiftedR);
-                            const visibleBottom = Math.min(cropBottom, shiftedB);
-
-                            const visibleWidth = visibleRight - visibleLeft;
-                            const visibleHeight = visibleBottom - visibleTop;
-
-                            // Пропускаем, если пересечения нет
-                            if (visibleWidth <= 0 || visibleHeight <= 0) return;
-
-                            tempCtx.save();
-                            tempCtx.beginPath();
-                            tempCtx.rect(0, 0, validWidth, validHeight); // clip к области кропа
-                            tempCtx.clip();
-
-                            // Рисуем видимую часть контура внутри кропа
-                            tempCtx.strokeRect(shiftedX, shiftedY, layerOrigWidth, layerOrigHeight);
-                            tempCtx.restore();
-                        }
-                        else if (layer.type === 'text') {
-                            tempCtx.save();
-                            tempCtx.fillStyle = layer.params.color;
-                            tempCtx.font = `${layer.params.fontSize || 16}px Arial`;
-                            tempCtx.textAlign = 'left';
-                            tempCtx.textBaseline = 'top';
-
-                            // Корректируем координаты текста относительно кропа
-                            const textX = layerOrigX - validX;
-                            const textY = layerOrigY - validY;
-
-                            // Calculate the available space within the crop area for the text
-                            const availableWidth = Math.min(layerOrigWidth, validWidth - textX);
-                            const availableHeight = Math.min(layerOrigHeight, validHeight - textY);
-
-                            this.wrapTextInRect(tempCtx, layer.params.text || 'Текст', textX, textY,
-                                availableWidth, availableHeight, layer.params.fontSize || 16);
-                            tempCtx.restore();
-                        }
-                    }
-                    else if (layer.type === 'line' && layer.points) {
-                        // Convert line coordinates to original image space
-                        const x1_orig = Math.round(layer.points.x1 / currentCanvasScaleX);
-                        const y1_orig = Math.round(layer.points.y1 / currentCanvasScaleY);
-                        const x2_orig = Math.round(layer.points.x2 / currentCanvasScaleX);
-                        const y2_orig = Math.round(layer.points.y2 / currentCanvasScaleY);
-
-                        const x1 = x1_orig - validX;
-                        const y1 = y1_orig - validY;
-                        const x2 = x2_orig - validX;
-                        const y2 = y2_orig - validY;
-
-                        // Проверяем, пересекается ли линия с областью кропа
-                        if ((x1 < 0 && x2 < 0) || (x1 > validWidth && x2 > validWidth) ||
-                            (y1 < 0 && y2 < 0) || (y1 > validHeight && y2 > validHeight)) {
-                            return;
-                        }
-
-                        const thickness = layer.params.thickness || 2;
-                        const color = layer.params.color;
-                        
-                        tempCtx.strokeStyle = color;
-                        tempCtx.fillStyle = color;
-                        tempCtx.lineWidth = thickness;
-                        tempCtx.lineCap = "round";
-
-                        // Вычисляем угол и длину линии
-                        const dx = x2 - x1;
-                        const dy = y2 - y1;
-                        const angle = Math.atan2(dy, dx);
-                        
-                        // Параметры стрелки-треугольника
-                        const arrowLength = 15 + thickness * 0.8;
-                        const arrowBaseWidth = thickness * 2;
-                        
-                        // Рисуем линию до начала треугольника
-                        const lineEndX = x2 - arrowLength * Math.cos(angle);
-                        const lineEndY = y2 - arrowLength * Math.sin(angle);
-                        
-                        tempCtx.beginPath();
-                        tempCtx.moveTo(x1, y1);
-                        tempCtx.lineTo(lineEndX, lineEndY);
-                        tempCtx.stroke();
-
-                        // Рисуем треугольную стрелку
-                        const perpX = -Math.sin(angle);
-                        const perpY = Math.cos(angle);
-                        
-                        const tipX = x2;
-                        const tipY = y2;
-                        const baseLeftX = lineEndX + perpX * (arrowBaseWidth / 2);
-                        const baseLeftY = lineEndY + perpY * (arrowBaseWidth / 2);
-                        const baseRightX = lineEndX - perpX * (arrowBaseWidth / 2);
-                        const baseRightY = lineEndY - perpY * (arrowBaseWidth / 2);
-                        
-                        tempCtx.beginPath();
-                        tempCtx.moveTo(tipX, tipY);
-                        tempCtx.lineTo(baseLeftX, baseLeftY);
-                        tempCtx.lineTo(baseRightX, baseRightY);
-                        tempCtx.closePath();
-                        tempCtx.fill();
-                    }
-                });
-            }
-
-            // Сохраняем состояние для отмены
-            if (this.historyManager) {
-                this.historyManager.beginAtomicOperation('Move/resize/create layer');
-            }
-
-            // 3. Обновляем основной canvas и оригинальное изображение
-            this.canvas.width = validWidth;
-            this.canvas.height = validHeight;
-            this.canvas.style.width = `${validWidth / this.DPR}px`;
-            this.canvas.style.height = `${validHeight / this.DPR}px`;
-
-            // Обновляем размеры selectionOverlay
-            this.selectionOverlay.style.width = `${this.canvas.clientWidth}px`;
-            this.selectionOverlay.style.height = `${this.canvas.clientHeight}px`;
-
-            // Очищаем и рисуем обрезанное изображение
-            this.context.clearRect(0, 0, this.canvas.width, this.canvas.height);
-            this.context.drawImage(tempCanvas, 0, 0);
-
-            // Обновляем исходное изображение
-            this.originalImage = new Image();
-            this.originalImage.src = tempCanvas.toDataURL();
-            this.image = this.originalImage;
-
-            // Сохраняем координаты кропа ДО его удаления из списка слоёв
-            const cropRect = { x: validX, y: validY, width: validWidth, height: validHeight };
-
-            // Пересчитываем координаты всех слоев
-            if (this.layerManager.layers && Array.isArray(this.layerManager.layers)) {
-                this.layerManager.layers.forEach(layer => {
-                    // Пропускаем crop слой при пересчете остальных слоёв
-                    if (layer.id === cropLayer.id) { return; }
-
-                    if (layer.rect) {
-                        // Convert original coordinates back to the new canvas coordinate system
-                        const newCanvasScaleX = this.canvas.width / this.originalImage.width;
-                        const newCanvasScaleY = this.canvas.height / this.originalImage.height;
-
-                        // Validate scale factors
-                        if (newCanvasScaleX <= 0 || newCanvasScaleY <= 0) {
-                            console.error('Invalid new canvas scale factors');
-                            return;
-                        }
-
-                        layer.rect.x = Math.round((Math.round(layer.rect.x / currentCanvasScaleX) - cropRect.x) * newCanvasScaleX);
-                        layer.rect.y = Math.round((Math.round(layer.rect.y / currentCanvasScaleY) - cropRect.y) * newCanvasScaleY);
-
-                        layer.rect.width = Math.round(layer.rect.width / currentCanvasScaleX * newCanvasScaleX);
-                        layer.rect.height = Math.round(layer.rect.height / currentCanvasScaleY * newCanvasScaleY);
-
-                        // Обрезаем слои, выходящие за границы нового изображения
-                        if (layer.rect.x < 0) {
-                            layer.rect.width += layer.rect.x;
-                            layer.rect.x = 0;
-                        }
-                        if (layer.rect.y < 0) {
-                            layer.rect.height += layer.rect.y;
-                            layer.rect.y = 0;
-                        }
-                        if (layer.rect.x + layer.rect.width > this.canvas.width) {
-                            layer.rect.width = this.canvas.width - layer.rect.x;
-                        }
-                        if (layer.rect.y + layer.rect.height > this.canvas.height) {
-                            layer.rect.height = this.canvas.height - layer.rect.y;
-                        }
-                    }
-
-                    if (layer.points) {
-                        // Convert original coordinates back to the new canvas coordinate system
-                        const newCanvasScaleX = this.canvas.width / this.originalImage.width;
-                        const newCanvasScaleY = this.canvas.height / this.originalImage.height;
-
-                        // Validate scale factors
-                        if (newCanvasScaleX <= 0 || newCanvasScaleY <= 0) {
-                            console.error('Invalid new canvas scale factors for points');
-                            return;
-                        }
-
-                        layer.points.x1 = Math.round((Math.round(layer.points.x1 / currentCanvasScaleX) - cropRect.x) * newCanvasScaleX);
-                        layer.points.y1 = Math.round((Math.round(layer.points.y1 / currentCanvasScaleY) - cropRect.y) * newCanvasScaleY);
-                        layer.points.x2 = Math.round((Math.round(layer.points.x2 / currentCanvasScaleX) - cropRect.x) * newCanvasScaleX);
-                        layer.points.y2 = Math.round((Math.round(layer.points.y2 / currentCanvasScaleY) - cropRect.y) * newCanvasScaleY);
-
-                        layer.points.x1 = Math.max(0, Math.min(this.canvas.width, layer.points.x1));
-                        layer.points.y1 = Math.max(0, Math.min(this.canvas.height, layer.points.y1));
-                        layer.points.x2 = Math.max(0, Math.min(this.canvas.width, layer.points.x2));
-                        layer.points.y2 = Math.max(0, Math.min(this.canvas.height, layer.points.y2));
-                    }
-                });
-            }
-
-            const cropIndex = this.layerManager.layers.findIndex(l => l.id === cropLayer.id)
-            if (cropIndex !== -1) {
-                this.layerManager.layers.splice(cropIndex, 1);
-                if (this.layerManager.activeLayerIndex === cropIndex) {
-                    this.layerManager.activeLayerIndex = -1;
-                } else if (this.layerManager.activeLayerIndex > cropIndex) {
-                    this.layerManager.activeLayer--;
-                }
-            }
-
-            // Обновляем базовый слой
-            if (this.layerManager.layers.length > 0 && this.layerManager.layers[0].type === 'base') {
-                const baseLayer = this.layerManager.layers[0];
-                // Копируем данные с холста в базовый слой
-                baseLayer.imageData = this.context.getImageData(0, 0, this.canvas.width, this.canvas.height);
-            }
-
-            // Закомментировано так как с этим кодом не правильно работал кроп
-            // this.render();
-
-            // Обновляем панель слоев
-            this.layerManager.updateLayersPanel();
-
-            if (this.historyManager) {
-                this.historyManager.commit('Apply crop');
-            }
-
-            // Обновляем информацию об изображении
-            const newFile = new File([this.canvas.toDataURL()], "cropped_image.png");
-            this.updateImageInfo(newFile);
-
-            // Сбрасываем активный инструмент
-            this.setActiveTool(null);
         } catch (error) {
             console.error('Error during crop operation:', error);
         }
+    }
+
+    /**
+     * Валидирует данные для кропа
+     * @returns {Object|null} Объект с cropLayer или null при ошибке
+     */
+    _validateCropData() {
+        if (!this.layerManager || !this.layerManager.layers) {
+            console.error('Layer manager or layers not initialized');
+            return null;
+        }
+
+        const cropLayer = this.layerManager.layers.find(l => l.type === 'crop');
+        if (!cropLayer || !cropLayer.rect) {
+            console.warn('No crop layer found or crop rectangle is invalid');
+            return null;
+        }
+
+        if (!this.canvas || !this.selectionOverlay) {
+            console.error('Canvas or selection overlay not found');
+            return null;
+        }
+
+        if (!this.originalImage || !this.originalImage.complete) {
+            console.error('Original image not loaded');
+            return null;
+        }
+
+        const { width, height } = cropLayer.rect;
+        if (width <= 0 || height <= 0) {
+            console.warn('Invalid crop dimensions');
+            return null;
+        }
+
+        // Обновляем размеры selectionOverlay
+        this.selectionOverlay.style.width = `${this.canvas.clientWidth}px`;
+        this.selectionOverlay.style.height = `${this.canvas.clientHeight}px`;
+
+        return { cropLayer };
+    }
+
+    /**
+     * Рассчитывает координаты кропа в пространстве оригинального изображения
+     * @param {Object} cropRect - Прямоугольник кропа {x, y, width, height}
+     * @returns {Object|null} Объект с координатами или null при ошибке
+     */
+    _calculateCropCoordinates(cropRect) {
+        const { x, y, width, height } = cropRect;
+
+        // Коэффициенты масштабирования текущего canvas относительно оригинального изображения
+        const currentCanvasScaleX = this.canvas.width / this.originalImage.naturalWidth;
+        const currentCanvasScaleY = this.canvas.height / this.originalImage.naturalHeight;
+
+        if (currentCanvasScaleX <= 0 || currentCanvasScaleY <= 0) {
+            console.error('Invalid canvas scale factors');
+            return null;
+        }
+
+        // Конвертация координат кропа в пространство оригинального изображения
+        const origCropX = Math.round(x / currentCanvasScaleX);
+        const origCropY = Math.round(y / currentCanvasScaleY);
+        const origCropWidth = Math.round(width / currentCanvasScaleX);
+        const origCropHeight = Math.round(height / currentCanvasScaleY);
+
+        // Ограничение области кропа границами оригинального изображения
+        let validX = Math.max(0, Math.min(origCropX, this.originalImage.naturalWidth - origCropWidth));
+        let validY = Math.max(0, Math.min(origCropY, this.originalImage.naturalHeight - origCropHeight));
+        const validWidth = Math.min(origCropWidth, this.originalImage.width - validX);
+        const validHeight = Math.min(origCropHeight, this.originalImage.height - validY);
+
+        if (validWidth <= 0 || validHeight <= 0) {
+            console.warn('Calculated crop area is invalid');
+            return null;
+        }
+
+        return {
+            validX,
+            validY,
+            validWidth,
+            validHeight,
+            currentCanvasScaleX,
+            currentCanvasScaleY
+        };
+    }
+
+    /**
+     * Создаёт временный canvas и рисует на нём кропнутую область
+     * @param {Object} cropCoords - Координаты кропа
+     * @returns {Object|null} Объект с tempCanvas и tempCtx или null при ошибке
+     */
+    _createCroppedCanvas(cropCoords) {
+        const { validWidth, validHeight } = cropCoords;
+
+        const tempCanvas = document.createElement('canvas');
+        if (!tempCanvas) {
+            console.error('Could not create temporary canvas');
+            return null;
+        }
+
+        const tempCtx = tempCanvas.getContext('2d');
+        if (!tempCtx) {
+            console.error('Could not get 2D context for temporary canvas');
+            return null;
+        }
+
+        tempCanvas.width = validWidth;
+        tempCanvas.height = validHeight;
+
+        // Рисуем оригинальное изображение в области кропа
+        tempCtx.drawImage(
+            this.originalImage,
+            cropCoords.validX, cropCoords.validY, validWidth, validHeight,
+            0, 0, validWidth, validHeight
+        );
+
+        return { tempCanvas, tempCtx };
+    }
+
+    /**
+     * Применяет эффекты слоёв (blur, highlight, line, text) к кропнутому canvas
+     * @param {CanvasRenderingContext2D} tempCtx - Контекст временного canvas
+     * @param {Object} cropCoords - Координаты кропа
+     * @param {Object} cropLayer - Crop-слой
+     */
+    _applyLayersToCroppedCanvas(tempCtx, cropCoords, cropLayer) {
+        const { validX, validY, validWidth, validHeight, currentCanvasScaleX, currentCanvasScaleY } = cropCoords;
+
+        if (!this.layerManager.layers || !Array.isArray(this.layerManager.layers)) return;
+
+        // Фильтруем crop-слой и применяем остальные
+        this.layerManager.layers
+            .filter(l => l.type !== 'crop')
+            .forEach(layer => {
+                if (layer.rect) {
+                    this._applyRectLayerToCroppedCanvas(tempCtx, layer, cropCoords);
+                } else if (layer.type === 'line' && layer.points) {
+                    this._applyLineLayerToCroppedCanvas(tempCtx, layer, cropCoords);
+                }
+            });
+    }
+
+    /**
+     * Применяет прямоугольный слой (blur, highlight, text) к кропнутому canvas
+     */
+    _applyRectLayerToCroppedCanvas(tempCtx, layer, cropCoords) {
+        const { validX, validY, validWidth, validHeight, currentCanvasScaleX, currentCanvasScaleY } = cropCoords;
+        const { rect, params, type } = layer;
+
+        // Конвертация координат слоя в пространство оригинального изображения
+        const layerOrigX = Math.round(rect.x / currentCanvasScaleX);
+        const layerOrigY = Math.round(rect.y / currentCanvasScaleY);
+        const layerOrigWidth = Math.round(rect.width / currentCanvasScaleX);
+        const layerOrigHeight = Math.round(rect.height / currentCanvasScaleY);
+
+        // Смещение относительно кропа
+        const layerX = layerOrigX - validX;
+        const layerY = layerOrigY - validY;
+
+        // Пропускаем слои полностью вне области кропа
+        if (layerX + layerOrigWidth < 0 || layerY + layerOrigHeight < 0 ||
+            layerX > validWidth || layerY > validHeight) return;
+
+        switch (type) {
+            case 'blur':
+                this._drawBlurredLayer(tempCtx, layerOrigX, layerOrigY, layerOrigWidth, layerOrigHeight, params, cropCoords);
+                break;
+            case 'highlight':
+                this._drawHighlightLayer(tempCtx, layerOrigX, layerOrigY, layerOrigWidth, layerOrigHeight, params, cropCoords);
+                break;
+            case 'text':
+                this._drawTextLayer(tempCtx, layerOrigX, layerOrigY, layerOrigWidth, layerOrigHeight, params, cropCoords);
+                break;
+        }
+    }
+
+    /**
+     * Рисует размытый слой на временном canvas
+     * @param {CanvasRenderingContext2D} tempCtx - Контекст временного canvas
+     * @param {number} layerOrigX - X координата слоя в пространстве оригинального изображения
+     * @param {number} layerOrigY - Y координата слоя в пространстве оригинального изображения
+     * @param {number} layerOrigWidth - Ширина слоя в пространстве оригинального изображения
+     * @param {number} layerOrigHeight - Высота слоя в пространстве оригинального изображения
+     * @param {Object} params - Параметры слоя
+     * @param {Object} cropCoords - Координаты кропа
+     */
+    _drawBlurredLayer(tempCtx, layerOrigX, layerOrigY, layerOrigWidth, layerOrigHeight, params, cropCoords) {
+        const { validX, validY, validWidth, validHeight } = cropCoords;
+        
+        // Вычисляем положение слоя относительно кроп-области
+        const layerX = layerOrigX - validX;
+        const layerY = layerOrigY - validY;
+        
+        // Вычисляем видимую часть слоя внутри кроп-области
+        const visibleLeft = Math.max(0, -layerX);
+        const visibleTop = Math.max(0, -layerY);
+        const visibleRight = Math.min(layerOrigWidth, validWidth - layerX);
+        const visibleBottom = Math.min(layerOrigHeight, validHeight - layerY);
+        
+        const visibleWidth = visibleRight - visibleLeft;
+        const visibleHeight = visibleBottom - visibleTop;
+        
+        if (visibleWidth <= 0 || visibleHeight <= 0) return;
+        
+        // Координаты источника на оригинальном изображении
+        const srcX = layerOrigX + visibleLeft;
+        const srcY = layerOrigY + visibleTop;
+        
+        // Координаты назначения на временном canvas
+        const dstX = layerX + visibleLeft;
+        const dstY = layerY + visibleTop;
+
+        tempCtx.save();
+        tempCtx.filter = `blur(${params.radius}px)`;
+        tempCtx.drawImage(
+            this.originalImage,
+            srcX, srcY, visibleWidth, visibleHeight,
+            dstX, dstY, visibleWidth, visibleHeight
+        );
+        tempCtx.restore();
+    }
+
+    /**
+     * Рисует слой выделения (highlight) на временном canvas
+     * @param {CanvasRenderingContext2D} tempCtx - Контекст временного canvas
+     * @param {number} layerOrigX - X координата слоя в пространстве оригинального изображения
+     * @param {number} layerOrigY - Y координата слоя в пространстве оригинального изображения
+     * @param {number} layerOrigWidth - Ширина слоя в пространстве оригинального изображения
+     * @param {number} layerOrigHeight - Высота слоя в пространстве оригинального изображения
+     * @param {Object} params - Параметры слоя
+     * @param {Object} cropCoords - Координаты кропа
+     */
+    _drawHighlightLayer(tempCtx, layerOrigX, layerOrigY, layerOrigWidth, layerOrigHeight, params, cropCoords) {
+        const { validX, validY, validWidth, validHeight } = cropCoords;
+        
+        // Вычисляем положение слоя относительно кроп-области
+        const layerX = layerOrigX - validX;
+        const layerY = layerOrigY - validY;
+
+        tempCtx.save();
+        tempCtx.strokeStyle = params.color;
+        tempCtx.lineWidth = params.thickness || this.CONSTANTS.LINE_WIDTH;
+        tempCtx.strokeRect(layerX, layerY, layerOrigWidth, layerOrigHeight);
+        tempCtx.restore();
+    }
+
+    /**
+     * Рисует текстовый слой на временном canvas
+     * @param {CanvasRenderingContext2D} tempCtx - Контекст временного canvas
+     * @param {number} layerOrigX - X координата слоя в пространстве оригинального изображения
+     * @param {number} layerOrigY - Y координата слоя в пространстве оригинального изображения
+     * @param {number} layerOrigWidth - Ширина слоя в пространстве оригинального изображения
+     * @param {number} layerOrigHeight - Высота слоя в пространстве оригинального изображения
+     * @param {Object} params - Параметры слоя
+     * @param {Object} cropCoords - Координаты кропа
+     */
+    _drawTextLayer(tempCtx, layerOrigX, layerOrigY, layerOrigWidth, layerOrigHeight, params, cropCoords) {
+        const { validX, validY, validWidth, validHeight } = cropCoords;
+        
+        // Вычисляем положение слоя относительно кроп-области
+        const textX = layerOrigX - validX;
+        const textY = layerOrigY - validY;
+
+        tempCtx.save();
+        tempCtx.fillStyle = params.color;
+        tempCtx.font = `${params.fontSize || 16}px Arial`;
+        tempCtx.textAlign = 'left';
+        tempCtx.textBaseline = 'top';
+        this.wrapTextInRect(
+            tempCtx,
+            params.text || 'Текст',
+            textX, textY,
+            layerOrigWidth, layerOrigHeight,
+            params.fontSize || 16
+        );
+        tempCtx.restore();
+    }
+
+    /**
+     * Применяет слой линии к кропнутому canvas
+     */
+    _applyLineLayerToCroppedCanvas(tempCtx, layer, cropCoords) {
+        const { validX, validY, validWidth, validHeight, currentCanvasScaleX, currentCanvasScaleY } = cropCoords;
+        const { points, params } = layer;
+
+        // Конвертация координат линии в пространство оригинального изображения
+        const x1_orig = Math.round(points.x1 / currentCanvasScaleX);
+        const y1_orig = Math.round(points.y1 / currentCanvasScaleY);
+        const x2_orig = Math.round(points.x2 / currentCanvasScaleX);
+        const y2_orig = Math.round(points.y2 / currentCanvasScaleY);
+
+        // Смещение относительно кропа
+        const x1 = x1_orig - validX;
+        const y1 = y1_orig - validY;
+        const x2 = x2_orig - validX;
+        const y2 = y2_orig - validY;
+
+        // Проверяем, пересекается ли линия с областью кропа
+        if ((x1 < 0 && x2 < 0) || (x1 > validWidth && x2 > validWidth) ||
+            (y1 < 0 && y2 < 0) || (y1 > validHeight && y2 > validHeight)) {
+            return;
+        }
+
+        const thickness = params.thickness || 2;
+        const color = params.color;
+
+        tempCtx.strokeStyle = color;
+        tempCtx.fillStyle = color;
+        tempCtx.lineWidth = thickness;
+        tempCtx.lineCap = "round";
+
+        // Вычисляем угол и длину линии
+        const dx = x2 - x1;
+        const dy = y2 - y1;
+        const angle = Math.atan2(dy, dx);
+
+        // Параметры стрелки-треугольника
+        const arrowLength = 15 + thickness * 0.8;
+        const arrowBaseWidth = thickness * 2;
+
+        // Рисуем линию до начала треугольника
+        const lineEndX = x2 - arrowLength * Math.cos(angle);
+        const lineEndY = y2 - arrowLength * Math.sin(angle);
+
+        tempCtx.beginPath();
+        tempCtx.moveTo(x1, y1);
+        tempCtx.lineTo(lineEndX, lineEndY);
+        tempCtx.stroke();
+
+        // Рисуем треугольную стрелку
+        const perpX = -Math.sin(angle);
+        const perpY = Math.cos(angle);
+
+        const tipX = x2;
+        const tipY = y2;
+        const baseLeftX = lineEndX + perpX * (arrowBaseWidth / 2);
+        const baseLeftY = lineEndY + perpY * (arrowBaseWidth / 2);
+        const baseRightX = lineEndX - perpX * (arrowBaseWidth / 2);
+        const baseRightY = lineEndY - perpY * (arrowBaseWidth / 2);
+
+        tempCtx.beginPath();
+        tempCtx.moveTo(tipX, tipY);
+        tempCtx.lineTo(baseLeftX, baseLeftY);
+        tempCtx.lineTo(baseRightX, baseRightY);
+        tempCtx.closePath();
+        tempCtx.fill();
+    }
+
+    /**
+     * Вычисляет видимую область для слоя внутри кроп-области
+     * @param {number} layerOrigX - X координата слоя в пространстве оригинального изображения
+     * @param {number} layerOrigY - Y координата слоя в пространстве оригинального изображения
+     * @param {number} layerOrigWidth - Ширина слоя в пространстве оригинального изображения
+     * @param {number} layerOrigHeight - Высота слоя в пространстве оригинального изображения
+     * @param {Object} cropCoords - Координаты кропа
+     * @returns {Object} Объект с координатами видимой области
+     */
+    _calculateVisibleArea(layerOrigX, layerOrigY, layerOrigWidth, layerOrigHeight, cropCoords) {
+        const cropLeft = 0, cropTop = 0;
+        const cropRight = cropCoords.validWidth;
+        const cropBottom = cropCoords.validHeight;
+
+        const shiftedX = layerOrigX - cropCoords.validX;
+        const shiftedY = layerOrigY - cropCoords.validY;
+        const shiftedR = shiftedX + layerOrigWidth;
+        const shiftedB = shiftedY + layerOrigHeight;
+
+        const visibleLeft = Math.max(cropLeft, shiftedX);
+        const visibleTop = Math.max(cropTop, shiftedY);
+        const visibleRight = Math.min(cropRight, shiftedR);
+        const visibleBottom = Math.min(cropBottom, shiftedB);
+
+        return {
+            validX: visibleLeft,
+            validY: visibleTop,
+            validWidth: visibleRight,
+            validHeight: visibleBottom
+        };
+    }
+
+    /**
+     * Обновляет основной canvas и данные изображения после кропа
+     * @param {HTMLCanvasElement} tempCanvas - Временный canvas с кропнутым изображением
+     * @param {Object} cropCoords - Координаты кропа
+     */
+    _updateCanvasWithCroppedImage(tempCanvas, cropCoords) {
+        const { validWidth, validHeight } = cropCoords;
+
+        // Сохраняем состояние для отмены
+        if (this.historyManager) {
+            this.historyManager.beginAtomicOperation('Apply crop');
+        }
+
+        // Обновляем основной canvas
+        this.canvas.width = validWidth;
+        this.canvas.height = validHeight;
+        this.canvas.style.width = `${validWidth / this.DPR}px`;
+        this.canvas.style.height = `${validHeight / this.DPR}px`;
+
+        // Обновляем размеры selectionOverlay
+        this.selectionOverlay.style.width = `${this.canvas.clientWidth}px`;
+        this.selectionOverlay.style.height = `${this.canvas.clientHeight}px`;
+
+        // Очищаем и рисуем обрезанное изображение
+        this.context.clearRect(0, 0, this.canvas.width, this.canvas.height);
+        this.context.drawImage(tempCanvas, 0, 0);
+
+        // Обновляем исходное изображение
+        this.originalImage = new Image();
+        this.originalImage.src = tempCanvas.toDataURL();
+        this.image = this.originalImage;
+
+        // Сохраняем координаты кропа для последующего пересчёта слоёв
+        this._cropCoords = {
+            x: cropCoords.validX,
+            y: cropCoords.validY,
+            width: validWidth,
+            height: validHeight
+        };
+    }
+
+    /**
+     * Пересчитывает координаты слоёв после кропа и удаляет crop-слой
+     * @param {Object} cropCoords - Координаты кропа
+     * @param {Object} cropLayer - Crop-слой для удаления
+     */
+    _updateLayersAfterCrop(cropCoords, cropLayer) {
+        const { currentCanvasScaleX, currentCanvasScaleY } = cropCoords;
+        const cropRect = { x: cropCoords.validX, y: cropCoords.validY, width: cropCoords.validWidth, height: cropCoords.validHeight };
+
+        if (!this.layerManager.layers || !Array.isArray(this.layerManager.layers)) return;
+
+        this.layerManager.layers.forEach(layer => {
+            // Пропускаем crop слой при пересчете остальных слоёв
+            if (layer.id === cropLayer.id) return;
+
+            if (layer.rect) {
+                this._updateRectLayerCoordinates(layer, cropRect, currentCanvasScaleX, currentCanvasScaleY);
+            }
+
+            if (layer.points) {
+                this._updateLineLayerCoordinates(layer, cropRect, currentCanvasScaleX, currentCanvasScaleY);
+            }
+        });
+
+        // Удаляем crop-слой
+        const cropIndex = this.layerManager.layers.findIndex(l => l.id === cropLayer.id);
+        if (cropIndex !== -1) {
+            this.layerManager.layers.splice(cropIndex, 1);
+            if (this.layerManager.activeLayerIndex === cropIndex) {
+                this.layerManager.activeLayerIndex = -1;
+            } else if (this.layerManager.activeLayerIndex > cropIndex) {
+                this.layerManager.activeLayerIndex--;
+            }
+        }
+
+        // Обновляем базовый слой
+        if (this.layerManager.layers.length > 0 && this.layerManager.layers[0].type === 'base') {
+            const baseLayer = this.layerManager.layers[0];
+            baseLayer.imageData = this.context.getImageData(0, 0, this.canvas.width, this.canvas.height);
+        }
+    }
+
+    /**
+     * Обновляет координаты прямоугольного слоя после кропа
+     */
+    _updateRectLayerCoordinates(layer, cropRect, currentCanvasScaleX, currentCanvasScaleY) {
+        const newCanvasScaleX = this.canvas.width / this.originalImage.width;
+        const newCanvasScaleY = this.canvas.height / this.originalImage.height;
+
+        if (newCanvasScaleX <= 0 || newCanvasScaleY <= 0) {
+            console.error('Invalid new canvas scale factors');
+            return;
+        }
+
+        layer.rect.x = Math.round((Math.round(layer.rect.x / currentCanvasScaleX) - cropRect.x) * newCanvasScaleX);
+        layer.rect.y = Math.round((Math.round(layer.rect.y / currentCanvasScaleY) - cropRect.y) * newCanvasScaleY);
+        layer.rect.width = Math.round(layer.rect.width / currentCanvasScaleX * newCanvasScaleX);
+        layer.rect.height = Math.round(layer.rect.height / currentCanvasScaleY * newCanvasScaleY);
+
+        // Обрезаем слои, выходящие за границы нового изображения
+        if (layer.rect.x < 0) {
+            layer.rect.width += layer.rect.x;
+            layer.rect.x = 0;
+        }
+        if (layer.rect.y < 0) {
+            layer.rect.height += layer.rect.y;
+            layer.rect.y = 0;
+        }
+        if (layer.rect.x + layer.rect.width > this.canvas.width) {
+            layer.rect.width = this.canvas.width - layer.rect.x;
+        }
+        if (layer.rect.y + layer.rect.height > this.canvas.height) {
+            layer.rect.height = this.canvas.height - layer.rect.y;
+        }
+    }
+
+    /**
+     * Обновляет координаты линии после кропа
+     */
+    _updateLineLayerCoordinates(layer, cropRect, currentCanvasScaleX, currentCanvasScaleY) {
+        const newCanvasScaleX = this.canvas.width / this.originalImage.width;
+        const newCanvasScaleY = this.canvas.height / this.originalImage.height;
+
+        if (newCanvasScaleX <= 0 || newCanvasScaleY <= 0) {
+            console.error('Invalid new canvas scale factors for points');
+            return;
+        }
+
+        layer.points.x1 = Math.round((Math.round(layer.points.x1 / currentCanvasScaleX) - cropRect.x) * newCanvasScaleX);
+        layer.points.y1 = Math.round((Math.round(layer.points.y1 / currentCanvasScaleY) - cropRect.y) * newCanvasScaleY);
+        layer.points.x2 = Math.round((Math.round(layer.points.x2 / currentCanvasScaleX) - cropRect.x) * newCanvasScaleX);
+        layer.points.y2 = Math.round((Math.round(layer.points.y2 / currentCanvasScaleY) - cropRect.y) * newCanvasScaleY);
+
+        // Ограничиваем координаты границами canvas
+        layer.points.x1 = Math.max(0, Math.min(this.canvas.width, layer.points.x1));
+        layer.points.y1 = Math.max(0, Math.min(this.canvas.height, layer.points.y1));
+        layer.points.x2 = Math.max(0, Math.min(this.canvas.width, layer.points.x2));
+        layer.points.y2 = Math.max(0, Math.min(this.canvas.height, layer.points.y2));
+    }
+
+    /**
+     * Финализирует операцию кропа: история, UI, сброс инструмента
+     * @param {Object} cropLayer - Crop-слой
+     */
+    _finalizeCrop(cropLayer) {
+        // Обновляем панель слоев
+        this.layerManager.updateLayersPanel();
+
+        // Фиксируем состояние в истории
+        if (this.historyManager) {
+            this.historyManager.commit('Apply crop');
+        }
+
+        // Обновляем информацию об изображении
+        const newFile = new File([this.canvas.toDataURL()], "cropped_image.png");
+        this.updateImageInfo(newFile);
+
+        // Сбрасываем активный инструмент
+        this.setActiveTool(null);
+
+        // Очищаем временные данные
+        this._cropCoords = null;
     }
 
     /**

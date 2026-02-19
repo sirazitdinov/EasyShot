@@ -20,11 +20,12 @@ npm test -- --ui
 
 ```
 tests/
-├── Helper.test.js          # Тесты утилит (deepMerge, конвертация координат)
-├── HistoryManager.test.js  # Тесты истории (undo/redo, атомарные операции)
-├── LayerManager.test.js    # Тесты менеджера слоёв
-├── HighlightTool.test.js   # Тесты инструмента выделения (HighlightTool)
-└── LineTool.test.js        # Тесты инструмента "Стрелка" (LineTool)
+├── Helper.test.js              # Тесты утилит (deepMerge, конвертация координат)
+├── HistoryManager.test.js      # Тесты истории (undo/redo, атомарные операции)
+├── LayerManager.test.js        # Тесты менеджера слоёв
+├── HighlightTool.test.js       # Тесты инструмента выделения (HighlightTool)
+├── LineTool.test.js            # Тесты инструмента "Стрелка" (LineTool)
+└── EditorCore.crop.test.js     # Тесты методов кропа (crop functionality)
 ```
 
 ## Покрытие тестами
@@ -70,6 +71,14 @@ tests/
 - `updateSetting` — изменение цвета и толщины линии
 - Интеграционные тесты — применение настроек к активному слою
 
+### EditorCore.crop.js (12 тестов)
+- `_calculateVisibleArea` — вычисление видимой области слоя внутри кроп-области
+- `_drawHighlightLayer` — отрисовка слоя выделения (highlight) на кропнутом canvas
+- `_drawTextLayer` — отрисовка текстового слоя на кропнутом canvas
+- `_drawBlurredLayer` — отрисовка размытого слоя на кропнутом canvas
+- `_applyLineLayerToCroppedCanvas` — применение слоя линии к кропнутому canvas
+- `_applyRectLayerToCroppedCanvas` — применение прямоугольного слоя к кропнутому canvas
+
 ## Добавление новых тестов
 
 1. Создайте файл `tests/<ModuleName>.test.js`
@@ -112,6 +121,6 @@ function createMockEditor() {
 
 ## Статистика
 
-- **Всего тестов:** 133
-- **Файлов с тестами:** 5
-- **Покрытие модулей:** Helper, HistoryManager, LayerManager, HighlightTool, LineTool
+- **Всего тестов:** 145
+- **Файлов с тестами:** 6
+- **Покрытие модулей:** Helper, HistoryManager, LayerManager, HighlightTool, LineTool, EditorCore (crop methods)
