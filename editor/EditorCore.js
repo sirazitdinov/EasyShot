@@ -372,9 +372,6 @@ export default class ImageEditor {
         // Обработка изменения размера окна
         window.addEventListener('resize', this.boundResize);
 
-        // Слои
-        document.getElementById('layersList').addEventListener('click', this.boundLayersListClick);
-
         // Удаление слоя по Delete
         document.addEventListener('keydown', this.boundKeyDown);
 
@@ -385,9 +382,6 @@ export default class ImageEditor {
         // Привязка обработчиков для selectionOverlay
         this.selectionOverlay.addEventListener('mousedown', this.boundOverlayMouseDown);
         this.selectionOverlay.addEventListener('mousemove', this.boundOverlayHover);
-
-        // Перетаскивание слоев
-        this.setupLayerDragAndDrop();
     }
 
     /**
@@ -551,23 +545,6 @@ export default class ImageEditor {
      */
     setActiveLayer(layerId) {
         this.layerManager.setActiveLayerById(layerId);
-        
-        // Обновляем currentLayer у активного инструмента и overlay
-        if (this.activeTool) {
-            const activeLayer = this.layerManager.activeLayer;
-            if (this.activeTool.name === 'text') {
-                this.activeTool.currentLayer = activeLayer?.type === 'text' ? activeLayer : null;
-            } else if (this.activeTool.name === 'blur') {
-                this.activeTool.currentLayer = activeLayer?.type === 'blur' ? activeLayer : null;
-            } else if (this.activeTool.name === 'highlight') {
-                this.activeTool.currentLayer = activeLayer?.type === 'highlight' ? activeLayer : null;
-            } else if (this.activeTool.name === 'line') {
-                this.activeTool.currentLayer = activeLayer?.type === 'line' ? activeLayer : null;
-            } else if (this.activeTool.name === 'crop') {
-                this.activeTool.currentLayer = activeLayer?.type === 'crop' ? activeLayer : null;
-            }
-            this.activeTool.updateOverlay();
-        }
     }
 
     /**
@@ -1190,22 +1167,32 @@ export default class ImageEditor {
                 }
             }
 
-            // 6. Попадание в слой → move
+            // 6. Попадание в слой → активация или move
             if (hit) {
-                this.activeLayer = hit;
-                const isRect = !!hit.rect;
-                this.dragState = {
-                    start: coords,
-                    layer: hit,
-                    handle: 'move',
-                    orig: isRect ? { ...hit.rect } : { ...hit.points }
-                };
-                this.selectionOverlay.className = 'move';
-                this.selectionOverlay.style.cursor = 'move';
-                this.updateLayersPanel();
+                // Если слой уже активен и это не текстовый слой — начинаем перетаскивание
+                // Иначе просто активируем слой
+                const isAlreadyActive = this.activeLayer === hit;
+                
+                if (isAlreadyActive) {
+                    // Начинаем перетаскивание только если кликнули по уже активному слою
+                    const isRect = !!hit.rect;
+                    this.dragState = {
+                        start: coords,
+                        layer: hit,
+                        handle: 'move',
+                        orig: isRect ? { ...hit.rect } : { ...hit.points }
+                    };
+                    this.selectionOverlay.className = 'move';
+                    this.selectionOverlay.style.cursor = 'move';
 
-                if (this.historyManager) {
-                    this.historyManager.beginAtomicOperation('Resize layer');
+                    if (this.historyManager) {
+                        this.historyManager.beginAtomicOperation('Resize layer');
+                    }
+                } else {
+                    // Просто активируем слой
+                    this.activeLayer = hit;
+                    this.updateLayersPanel();
+                    this.render();
                 }
                 return;
             }
@@ -1336,17 +1323,20 @@ export default class ImageEditor {
      */
     onMouseMove(e) {
         // Сохраняем данные для отложенной отрисовки через requestAnimationFrame
-        this._pendingDragState = { e, dragState: { ...this.dragState } };
+        // Только если есть активный dragState
+        if (this.dragState) {
+            this._pendingDragState = { e, dragState: { ...this.dragState } };
 
-        // Отменяем предыдущий кадр, если он ещё не выполнен
-        if (this._rafId) {
-            cancelAnimationFrame(this._rafId);
+            // Отменяем предыдущий кадр, если он ещё не выполнен
+            if (this._rafId) {
+                cancelAnimationFrame(this._rafId);
+            }
+
+            // Запрашиваем следующий кадр анимации
+            this._rafId = requestAnimationFrame(() => {
+                this._processDragFrame();
+            });
         }
-
-        // Запрашиваем следующий кадр анимации
-        this._rafId = requestAnimationFrame(() => {
-            this._processDragFrame();
-        });
 
         // Вызываем handleMouseMove у инструмента без троттлинга (для UI/превью)
         try {
@@ -1372,7 +1362,10 @@ export default class ImageEditor {
         const { e, dragState } = pending;
 
         try {
-            if (!dragState) return;
+            if (!dragState || !dragState.layer || !dragState.start || !dragState.orig) {
+                console.warn('Invalid dragState, skipping frame');
+                return;
+            }
 
             // Проверяем, что e и canvas существуют
             if (!e || !this.canvas) {
@@ -1382,12 +1375,6 @@ export default class ImageEditor {
 
             const coords = this.getCanvasCoords(e);
             const { handle, layer, start, orig } = dragState;
-
-            // Проверяем, что все необходимые объекты существуют
-            if (!layer || !start || !orig) {
-                console.error('Missing layer, start, or orig data');
-                return;
-            }
 
             if (handle === 'create') {
                 const x1 = Math.min(start.x, coords.x);

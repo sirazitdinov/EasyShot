@@ -169,7 +169,31 @@ export default class LayerManager {
         if (idx === -1) return false;
         this.activeLayerIndex = idx;
         this.updateLayersPanel();
-        this.editor.render(); // или вызов через EditorCore
+        this.editor.render();
+
+        // Обновляем currentLayer у активного инструмента
+        const activeTool = this.editor.activeTool;
+        const activeLayer = this.activeLayer;
+        if (activeTool && activeLayer) {
+            // Устанавливаем currentLayer только если тип слоя совпадает с типом инструмента
+            if (activeTool.name === 'text' && activeLayer.type === 'text') {
+                activeTool.currentLayer = activeLayer;
+            } else if (activeTool.name === 'blur' && activeLayer.type === 'blur') {
+                activeTool.currentLayer = activeLayer;
+            } else if (activeTool.name === 'highlight' && activeLayer.type === 'highlight') {
+                activeTool.currentLayer = activeLayer;
+            } else if (activeTool.name === 'line' && activeLayer.type === 'line') {
+                activeTool.currentLayer = activeLayer;
+            } else if (activeTool.name === 'crop' && activeLayer.type === 'crop') {
+                activeTool.currentLayer = activeLayer;
+            } else {
+                // Если тип слоя не совпадает с инструментом, сбрасываем currentLayer
+                activeTool.currentLayer = null;
+            }
+            // Всегда обновляем overlay активного инструмента
+            activeTool.updateOverlay();
+        }
+
         return true;
     }
 
@@ -290,7 +314,10 @@ export default class LayerManager {
 
     setupDragAndDrop() {
         const el = this.layersListElement;
-        if (!el) return;
+        if (!el) {
+            console.warn('layersListElement not found, skipping setupDragAndDrop');
+            return;
+        }
 
         const prevent = (e) => e.preventDefault();
 
@@ -329,12 +356,13 @@ export default class LayerManager {
             this.moveLayer(draggedId, target.dataset.layerId, insertAbove);
         });
 
-        el.addEventListener('click', (e) => {
+        // Используем mousedown вместо click для более надежного срабатывания
+        el.addEventListener('mousedown', (e) => {
             const item = e.target.closest('.layer-item');
             if (item && !e.target.closest('.layer-drag-handle')) {
                 this.setActiveLayerById(item.dataset.layerId);
             }
-        });
+        }, true); // Используем capture phase
     }
 
     destroy() {

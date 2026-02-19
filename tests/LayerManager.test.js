@@ -276,17 +276,134 @@ describe('LayerManager', () => {
         { id: 'layer1', type: 'base' },
         { id: 'layer2', type: 'highlight' }
       ]
-      
+
       const result = layerManager.setActiveLayerById('layer2')
-      
+
       expect(result).toBe(true)
       expect(layerManager.activeLayer.id).toBe('layer2')
     })
 
     it('должен возвращать false если слой не найден', () => {
       const result = layerManager.setActiveLayerById('nonexistent')
-      
+
       expect(result).toBe(false)
+    })
+
+    it('должен обновлять currentLayer у активного инструмента если тип совпадает', () => {
+      const mockTool = {
+        name: 'highlight',
+        currentLayer: null,
+        updateOverlay: vi.fn()
+      }
+      editor.activeTool = mockTool
+      layerManager.layers = [
+        { id: 'layer1', type: 'base' },
+        { id: 'layer2', type: 'highlight', rect: { x: 0, y: 0, width: 10, height: 10 } }
+      ]
+
+      layerManager.setActiveLayerById('layer2')
+
+      expect(mockTool.currentLayer).toEqual(layerManager.layers[1])
+      expect(mockTool.updateOverlay).toHaveBeenCalled()
+    })
+
+    it('должен сбрасывать currentLayer у инструмента если тип слоя не совпадает', () => {
+      const mockTool = {
+        name: 'highlight',
+        currentLayer: { id: 'old-layer', type: 'highlight' },
+        updateOverlay: vi.fn()
+      }
+      editor.activeTool = mockTool
+      layerManager.layers = [
+        { id: 'layer1', type: 'base' },
+        { id: 'layer2', type: 'line', points: { x1: 0, y1: 0, x2: 10, y2: 10 } }
+      ]
+
+      layerManager.setActiveLayerById('layer2')
+
+      expect(mockTool.currentLayer).toBe(null)
+      expect(mockTool.updateOverlay).toHaveBeenCalled()
+    })
+
+    it('должен работать с blur инструментом', () => {
+      const mockTool = {
+        name: 'blur',
+        currentLayer: null,
+        updateOverlay: vi.fn()
+      }
+      editor.activeTool = mockTool
+      layerManager.layers = [
+        { id: 'layer1', type: 'base' },
+        { id: 'layer2', type: 'blur', rect: { x: 0, y: 0, width: 10, height: 10 } }
+      ]
+
+      layerManager.setActiveLayerById('layer2')
+
+      expect(mockTool.currentLayer).toEqual(layerManager.layers[1])
+    })
+
+    it('должен работать с text инструментом', () => {
+      const mockTool = {
+        name: 'text',
+        currentLayer: null,
+        updateOverlay: vi.fn()
+      }
+      editor.activeTool = mockTool
+      layerManager.layers = [
+        { id: 'layer1', type: 'base' },
+        { id: 'layer2', type: 'text', rect: { x: 0, y: 0, width: 10, height: 10 }, params: { text: 'test' } }
+      ]
+
+      layerManager.setActiveLayerById('layer2')
+
+      expect(mockTool.currentLayer).toEqual(layerManager.layers[1])
+    })
+
+    it('должен работать с line инструментом', () => {
+      const mockTool = {
+        name: 'line',
+        currentLayer: null,
+        updateOverlay: vi.fn()
+      }
+      editor.activeTool = mockTool
+      layerManager.layers = [
+        { id: 'layer1', type: 'base' },
+        { id: 'layer2', type: 'line', points: { x1: 0, y1: 0, x2: 10, y2: 10 } }
+      ]
+
+      layerManager.setActiveLayerById('layer2')
+
+      expect(mockTool.currentLayer).toEqual(layerManager.layers[1])
+    })
+
+    it('должен работать с crop инструментом', () => {
+      const mockTool = {
+        name: 'crop',
+        currentLayer: null,
+        updateOverlay: vi.fn()
+      }
+      editor.activeTool = mockTool
+      layerManager.layers = [
+        { id: 'layer1', type: 'base' },
+        { id: 'layer2', type: 'crop', rect: { x: 0, y: 0, width: 10, height: 10 } }
+      ]
+
+      layerManager.setActiveLayerById('layer2')
+
+      expect(mockTool.currentLayer).toEqual(layerManager.layers[1])
+    })
+
+    it('не должен вызывать ошибки если нет активного инструмента', () => {
+      editor.activeTool = null
+      layerManager.layers = [
+        { id: 'layer1', type: 'base' },
+        { id: 'layer2', type: 'highlight' }
+      ]
+
+      const result = layerManager.setActiveLayerById('layer2')
+
+      expect(result).toBe(true)
+      expect(layerManager.activeLayer.id).toBe('layer2')
     })
   })
 

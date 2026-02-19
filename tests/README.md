@@ -45,10 +45,10 @@ tests/
 - `isStateEqual` — сравнение состояний
 - `destroy` — очистка менеджера
 
-### LayerManager.js (39 тестов)
+### LayerManager.js (46 тестов)
 - `createLayerObject` — создание слоёв разных типов
 - `addLayer` / `deleteActiveLayer` — добавление и удаление
-- `setActiveLayerById` — установка активного слоя
+- `setActiveLayerById` — установка активного слоя, синхронизация с инструментами
 - `moveLayer` — перемещение слоёв
 - `redrawAllLayers` — перерисовка
 - `captureActiveLayerFromCanvas` / `restoreActiveLayerToCanvas` — синхронизация с холстом
@@ -121,6 +121,6 @@ function createMockEditor() {
 
 ## Статистика
 
-- **Всего тестов:** 145
+- **Всего тестов:** 152
 - **Файлов с тестами:** 6
 - **Покрытие модулей:** Helper, HistoryManager, LayerManager, HighlightTool, LineTool, EditorCore (crop methods)
