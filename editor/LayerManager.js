@@ -325,30 +325,57 @@ export default class LayerManager {
         }
 
         const prevent = (e) => e.preventDefault();
+        let currentDragOverItem = null;
 
         el.addEventListener('dragstart', (e) => {
             const item = e.target.closest('.layer-item');
             if (!item) return;
             e.dataTransfer.setData('text/plain', item.dataset.layerId);
             item.classList.add('dragging');
+            e.dataTransfer.effectAllowed = 'move';
+            // Устанавливаем прозрачный drag image, чтобы не было "призрака"
+            const dragImage = document.createElement('div');
+            dragImage.style.opacity = '0';
+            document.body.appendChild(dragImage);
+            e.dataTransfer.setDragImage(dragImage, 0, 0);
+            setTimeout(() => document.body.removeChild(dragImage), 0);
         });
 
         el.addEventListener('dragend', (e) => {
             const item = e.target.closest('.layer-item');
             if (item) item.classList.remove('dragging');
-            el.querySelectorAll('.insert-above, .insert-below').forEach(el => el.classList.remove('insert-above', 'insert-below'));
+            el.querySelectorAll('.insert-above, .insert-below').forEach(el => {
+                el.classList.remove('insert-above', 'insert-below');
+            });
+            currentDragOverItem = null;
         });
 
         el.addEventListener('dragover', (e) => {
             prevent(e);
             const target = e.target.closest('.layer-item');
-            if (!target) return;
 
-            el.querySelectorAll('.insert-above, .insert-below').forEach(el => el.classList.remove('insert-above', 'insert-below'));
+            // Если цель не изменилась, не обновляем классы (убираем подёргивания)
+            if (target === currentDragOverItem) {
+                return;
+            }
+
+            // Очищаем предыдущие классы
+            if (currentDragOverItem) {
+                currentDragOverItem.classList.remove('insert-above', 'insert-below');
+            }
+
+            if (!target) {
+                currentDragOverItem = null;
+                return;
+            }
 
             const rect = target.getBoundingClientRect();
             const isAbove = e.clientY < rect.top + rect.height / 2;
-            target.classList.add(isAbove ? 'insert-above' : 'insert-below');
+            
+            // Слои отображаются в обратном порядке (верхний внизу списка),
+            // поэтому инвертируем логику: isAbove = true → insert-below (визуально сверху)
+            target.classList.add(isAbove ? 'insert-below' : 'insert-above');
+            currentDragOverItem = target;
         });
 
         el.addEventListener('drop', (e) => {
@@ -357,8 +384,15 @@ export default class LayerManager {
             if (!target) return;
 
             const draggedId = e.dataTransfer.getData('text/plain');
-            const insertAbove = target.classList.contains('insert-above');
+            // Инвертируем: insert-below визуально = insertAbove логически
+            const insertAbove = target.classList.contains('insert-below');
             this.moveLayer(draggedId, target.dataset.layerId, insertAbove);
+
+            // Очищаем классы
+            if (currentDragOverItem) {
+                currentDragOverItem.classList.remove('insert-above', 'insert-below');
+                currentDragOverItem = null;
+            }
         });
 
         // Используем mousedown вместо click для более надежного срабатывания

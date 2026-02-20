@@ -424,23 +424,41 @@ input[type="color"] {
     font-size: 14px;
 }
 
-.layers-list::before,
-.layers-list::after,
-.layer-item.insert-above,
-.layer-item.insert-below {
-    content: "";
-    display: block;
-    height: 4px;
-    background-color: var(--highlight-color);
-    margin: -2px 0;
-    border-radius: 2px;
-    opacity: 0;
-    transition: opacity 0.2s;
+/* Drag-and-drop индикация */
+.layer-item.dragging {
+    opacity: 0.4;
+    background-color: rgba(0, 150, 255, 0.1);
 }
 
-.layer-item.insert-above::before,
+.layer-item.insert-above,
+.layer-item.insert-below {
+    position: relative;
+}
+
+.layer-item.insert-above::before {
+    content: "";
+    position: absolute;
+    top: -2px;
+    left: 0;
+    right: 0;
+    height: 4px;
+    background-color: var(--highlight-color);
+    border-radius: 2px;
+    z-index: 10;
+    pointer-events: none;
+}
+
 .layer-item.insert-below::after {
-    opacity: 1 !important;
+    content: "";
+    position: absolute;
+    bottom: -2px;
+    left: 0;
+    right: 0;
+    height: 4px;
+    background-color: var(--highlight-color);
+    border-radius: 2px;
+    z-index: 10;
+    pointer-events: none;
 }
 
 /* Inline-виджет редактирования текста */
