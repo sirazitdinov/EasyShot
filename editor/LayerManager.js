@@ -14,7 +14,7 @@
 /**
  * @typedef {Object} EditorLayer
  * @property {string} id
- * @property {string} type - 'base' | 'crop' | 'blur' | 'highlight' | 'line' | 'text'
+ * @property {string} type - 'base' | 'crop' | 'blur' | 'rectangle' | 'highlighter' | 'line' | 'text'
  * @property {boolean} visible
  * @property {{x:number,y:number,width:number,height:number}|null} rect
  * @property {{x1:number,y1:number,x2:number,y2:number}|null} points
@@ -80,7 +80,7 @@ export default class LayerManager {
                 }
                 layer.params.radius = layer.params.radius ?? 5;
                 break;
-            case 'highlight':
+            case 'rectangle':
                 if (!layer.rect) {
                     layer.rect = { x: 0, y: 0, width: 0, height: 0 };
                 }
@@ -171,27 +171,31 @@ export default class LayerManager {
         this.updateLayersPanel();
         this.editor.render();
 
-        // Обновляем currentLayer у активного инструмента
-        const activeTool = this.editor.activeTool;
         const activeLayer = this.activeLayer;
-        if (activeTool && activeLayer) {
-            // Устанавливаем currentLayer только если тип слоя совпадает с типом инструмента
-            if (activeTool.name === 'text' && activeLayer.type === 'text') {
-                activeTool.currentLayer = activeLayer;
-            } else if (activeTool.name === 'blur' && activeLayer.type === 'blur') {
-                activeTool.currentLayer = activeLayer;
-            } else if (activeTool.name === 'highlight' && activeLayer.type === 'highlight') {
-                activeTool.currentLayer = activeLayer;
-            } else if (activeTool.name === 'line' && activeLayer.type === 'line') {
-                activeTool.currentLayer = activeLayer;
-            } else if (activeTool.name === 'crop' && activeLayer.type === 'crop') {
-                activeTool.currentLayer = activeLayer;
-            } else {
-                // Если тип слоя не совпадает с инструментом, сбрасываем currentLayer
-                activeTool.currentLayer = null;
+        if (activeLayer) {
+            // Переключаем инструмент на соответствующий типу слоя
+            this.editor.switchToLayerTool(activeLayer.type);
+
+            // Обновляем currentLayer у активного инструмента
+            const activeTool = this.editor.activeTool;
+            if (activeTool) {
+                // Устанавливаем currentLayer только если тип слоя совпадает с типом инструмента
+                if (activeTool.name === activeLayer.type) {
+                    activeTool.currentLayer = activeLayer;
+                    // Обновляем настройки инструмента из параметров слоя
+                    if (activeTool.settings && activeLayer.params) {
+                        Object.assign(activeTool.settings, activeLayer.params);
+                        // Обновляем UI настроек с новыми значениями
+                        if (typeof activeTool.updateSettingsUI === 'function') {
+                            activeTool.updateSettingsUI();
+                        }
+                    }
+                } else {
+                    activeTool.currentLayer = null;
+                }
+                // Обновляем overlay активного инструмента
+                activeTool.updateOverlay();
             }
-            // Всегда обновляем overlay активного инструмента
-            activeTool.updateOverlay();
         }
 
         return true;
@@ -280,7 +284,6 @@ export default class LayerManager {
             base: { iconPath: 'icons/Image.svg', name: 'Изображение' },
             crop: { iconPath: 'icons/crop.svg', name: 'Кадрирование' },
             blur: { iconPath: 'icons/droplet.svg', name: 'Размытие' },
-            highlight: { iconPath: 'icons/rectangle.svg', name: 'Выделение' },
             rectangle: { iconPath: 'icons/rectangle.svg', name: 'Прямоугольник' },
             highlighter: { iconPath: 'icons/highlight.svg', name: 'Маркер' },
             line: { iconPath: 'icons/ArrowUpRight.svg', name: 'Стрелка' },

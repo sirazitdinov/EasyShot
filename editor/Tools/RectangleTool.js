@@ -25,7 +25,7 @@ export default class RectangleTool extends BaseTool {
 
         if (colorInput) {
             const activeLayer = this.editor.getActiveLayer?.();
-            if (activeLayer?.type === 'highlight') {
+            if (activeLayer?.type === 'rectangle') {
                 this.settings.color = activeLayer.params.color ?? colorInput.value;
             } else {
                 this.settings.color = colorInput.value;
@@ -34,7 +34,7 @@ export default class RectangleTool extends BaseTool {
 
         if (thicknessInput) {
             const activeLayer = this.editor.getActiveLayer?.();
-            if (activeLayer?.type === 'highlight') {
+            if (activeLayer?.type === 'rectangle') {
                 this.settings.thickness = activeLayer.params.thickness ?? Number(thicknessInput.value);
             } else {
                 this.settings.thickness = Number(thicknessInput.value);
@@ -42,7 +42,7 @@ export default class RectangleTool extends BaseTool {
         }
 
         const activeLayer = this.editor.getActiveLayer?.();
-        this.currentLayer = activeLayer?.type === 'highlight' ? activeLayer : null;
+        this.currentLayer = activeLayer?.type === 'rectangle' ? activeLayer : null;
 
         this.editor.updateToolbarButtons();
     }
@@ -104,7 +104,7 @@ export default class RectangleTool extends BaseTool {
         if (!canvas || !this.previewElement) return;
 
         const activeLayer = this.editor.getActiveLayer?.();
-        const layer = (activeLayer?.type === 'highlight') ? activeLayer : this.currentLayer;
+        const layer = (activeLayer?.type === 'rectangle') ? activeLayer : this.currentLayer;
 
         if (layer?.rect) {
             const { x, y, width, height } = layer.rect;
@@ -148,7 +148,7 @@ export default class RectangleTool extends BaseTool {
         }
 
         const activeLayer = this.editor.getActiveLayer();
-        if (activeLayer?.type === 'highlight') {
+        if (activeLayer?.type === 'rectangle') {
             if (key === 'color') {
                 activeLayer.params.color = value;
             } else if (key === 'thickness') {

@@ -92,9 +92,9 @@ describe('LayerManager', () => {
 
   describe('createLayerObject', () => {
     it('должен создавать слой с default параметрами', () => {
-      const layer = layerManager.createLayerObject('highlight')
-      
-      expect(layer.type).toBe('highlight')
+      const layer = layerManager.createLayerObject('rectangle')
+
+      expect(layer.type).toBe('rectangle')
       expect(layer.visible).toBe(true)
       expect(layer.params.color).toBe('#ff0000')
       expect(layer.params.thickness).toBe(2)
@@ -271,10 +271,15 @@ describe('LayerManager', () => {
   })
 
   describe('setActiveLayerById', () => {
+    beforeEach(() => {
+      // Добавляем мок для switchToLayerTool
+      editor.switchToLayerTool = vi.fn()
+    })
+
     it('должен устанавливать активный слой по id', () => {
       layerManager.layers = [
         { id: 'layer1', type: 'base' },
-        { id: 'layer2', type: 'highlight' }
+        { id: 'layer2', type: 'rectangle' }
       ]
 
       const result = layerManager.setActiveLayerById('layer2')
@@ -291,14 +296,14 @@ describe('LayerManager', () => {
 
     it('должен обновлять currentLayer у активного инструмента если тип совпадает', () => {
       const mockTool = {
-        name: 'highlight',
+        name: 'rectangle',
         currentLayer: null,
         updateOverlay: vi.fn()
       }
       editor.activeTool = mockTool
       layerManager.layers = [
         { id: 'layer1', type: 'base' },
-        { id: 'layer2', type: 'highlight', rect: { x: 0, y: 0, width: 10, height: 10 } }
+        { id: 'layer2', type: 'rectangle', rect: { x: 0, y: 0, width: 10, height: 10 }, params: { color: '#ff0000', thickness: 2 } }
       ]
 
       layerManager.setActiveLayerById('layer2')
@@ -309,8 +314,8 @@ describe('LayerManager', () => {
 
     it('должен сбрасывать currentLayer у инструмента если тип слоя не совпадает', () => {
       const mockTool = {
-        name: 'highlight',
-        currentLayer: { id: 'old-layer', type: 'highlight' },
+        name: 'rectangle',
+        currentLayer: { id: 'old-layer', type: 'rectangle' },
         updateOverlay: vi.fn()
       }
       editor.activeTool = mockTool
@@ -397,7 +402,7 @@ describe('LayerManager', () => {
       editor.activeTool = null
       layerManager.layers = [
         { id: 'layer1', type: 'base' },
-        { id: 'layer2', type: 'highlight' }
+        { id: 'layer2', type: 'rectangle' }
       ]
 
       const result = layerManager.setActiveLayerById('layer2')
@@ -516,10 +521,10 @@ describe('LayerManager', () => {
       expect(display.iconPath).toBe('icons/Image.svg')
     })
 
-    it('должен возвращать иконку и имя для highlight слоя', () => {
-      const display = layerManager.getLayerTypeDisplay('highlight')
-      
-      expect(display.name).toBe('Выделение')
+    it('должен возвращать иконку и имя для rectangle слоя', () => {
+      const display = layerManager.getLayerTypeDisplay('rectangle')
+
+      expect(display.name).toBe('Прямоугольник')
       expect(display.iconPath).toBe('icons/rectangle.svg')
     })
 

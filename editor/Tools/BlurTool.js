@@ -22,11 +22,14 @@ export default class BlurTool extends BaseTool {
         super.activate();
 
         const radiusInput = document.getElementById('blurRadius');
-        if (radiusInput) {
+        
+        const activeLayer = this.editor.getActiveLayer?.();
+        if (activeLayer?.type === 'blur') {
+            this.settings.radius = activeLayer.params.radius ?? 6;
+        } else if (radiusInput) {
             this.settings.radius = Number(radiusInput.value);
         }
-
-        const activeLayer = this.editor.getActiveLayer?.();
+        
         this.currentLayer = activeLayer?.type === 'blur' ? activeLayer : null;
 
         // updateOverlay() вызывается в EditorCore.activateTool() после activate()

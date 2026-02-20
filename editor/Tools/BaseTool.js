@@ -101,4 +101,16 @@ export default class BaseTool {
         }
         this.previewElement = null;
     }
+
+    /**
+     * Обновляет UI элементы настроек из текущего состояния this.settings
+     * Вызывается при выборе слоя для синхронизации UI с параметрами слоя
+     */
+    updateSettingsUI() {
+        if (!this.settings || !this.editor.toolSettingsUI) return;
+        
+        // Перерисовываем панель настроек с обновлёнными значениями
+        const config = this.getUISettingsConfig();
+        this.editor.toolSettingsUI.renderSettings(this);
+    }
 }

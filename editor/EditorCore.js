@@ -559,6 +559,27 @@ export default class ImageEditor {
     }
 
     /**
+     * Переключает активный инструмент на инструмент, соответствующий типу слоя
+     * @param {string} layerType - Тип слоя ('blur', 'rectangle', 'highlighter', 'line', 'text', 'crop')
+     */
+    switchToLayerTool(layerType) {
+        // Маппинг типов слоёв к инструментам
+        const toolMap = {
+            blur: 'blur',
+            rectangle: 'rectangle',
+            highlighter: 'highlighter',
+            line: 'line',
+            text: 'text',
+            crop: 'crop'
+        };
+
+        const toolName = toolMap[layerType];
+        if (toolName && this.tools[toolName]) {
+            this.setActiveTool(this.tools[toolName]);
+        }
+    }
+
+    /**
      * Возвращает активный слой
      * @returns {Object} - Активный слой
      */
@@ -769,7 +790,7 @@ export default class ImageEditor {
                 return;
             }
 
-            if (layer.type === "highlight" && layer.rect) {
+            if (layer.type === "rectangle" && layer.rect) {
                 this.context.save();
                 this.context.strokeStyle = layer.params?.color ?? "#ff0000";
                 const thickness = layer.params?.thickness ?? this.CONSTANTS?.LINE_WIDTH ?? 2;
@@ -1249,22 +1270,11 @@ export default class ImageEditor {
 
                     case 'rectangle':
                         initialOptions = {
-                            type: 'highlight',
+                            type: 'rectangle',
                             rect: { x: coords.x, y: coords.y, width: 0, height: 0 },
                             params: {
                                 color: this.tools.rectangle?.settings?.color ?? '#ff0000',
                                 thickness: this.tools.rectangle?.settings?.thickness ?? 2
-                            }
-                        };
-                        break;
-
-                    case 'highlight':
-                        initialOptions = {
-                            type: 'highlight',
-                            rect: { x: coords.x, y: coords.y, width: 0, height: 0 },
-                            params: {
-                                color: this.tools.highlight.settings?.color ?? '#ff0000',
-                                thickness: this.tools.highlight.settings?.thickness ?? 2
                             }
                         };
                         break;
@@ -1325,8 +1335,6 @@ export default class ImageEditor {
                     } else if (type === 'text' && this.activeTool.name === 'text') {
                         this.activeTool.currentLayer = created;
                     } else if (type === 'blur' && this.activeTool.name === 'blur') {
-                        this.activeTool.currentLayer = created;
-                    } else if (type === 'highlight' && this.activeTool.name === 'highlight') {
                         this.activeTool.currentLayer = created;
                     } else if (type === 'rectangle' && this.activeTool.name === 'rectangle') {
                         this.activeTool.currentLayer = created;
@@ -2016,6 +2024,9 @@ export default class ImageEditor {
             case 'blur':
                 this._drawBlurredLayer(tempCtx, layerOrigX, layerOrigY, layerOrigWidth, layerOrigHeight, params, cropCoords);
                 break;
+            case 'rectangle':
+                this._drawRectangleLayer(tempCtx, layerOrigX, layerOrigY, layerOrigWidth, layerOrigHeight, params, cropCoords);
+                break;
             case 'highlight':
                 this._drawHighlightLayer(tempCtx, layerOrigX, layerOrigY, layerOrigWidth, layerOrigHeight, params, cropCoords);
                 break;
@@ -2095,6 +2106,49 @@ export default class ImageEditor {
         tempCtx.strokeStyle = params.color;
         tempCtx.lineWidth = params.thickness || this.CONSTANTS.LINE_WIDTH;
         tempCtx.strokeRect(layerX, layerY, layerOrigWidth, layerOrigHeight);
+        tempCtx.restore();
+    }
+
+    /**
+     * Рисует слой прямоугольника (rectangle) на временном canvas
+     * @param {CanvasRenderingContext2D} tempCtx - Контекст временного canvas
+     * @param {number} layerOrigX - X координата слоя в пространстве оригинального изображения
+     * @param {number} layerOrigY - Y координата слоя в пространстве оригинального изображения
+     * @param {number} layerOrigWidth - Ширина слоя в пространстве оригинального изображения
+     * @param {number} layerOrigHeight - Высота слоя в пространстве оригинального изображения
+     * @param {Object} params - Параметры слоя
+     * @param {Object} cropCoords - Координаты кропа
+     */
+    _drawRectangleLayer(tempCtx, layerOrigX, layerOrigY, layerOrigWidth, layerOrigHeight, params, cropCoords) {
+        const { validX, validY, validWidth, validHeight } = cropCoords;
+
+        // Вычисляем положение слоя относительно кроп-области
+        const layerX = layerOrigX - validX;
+        const layerY = layerOrigY - validY;
+
+        // Вычисляем видимую часть слоя внутри кроп-области
+        const visibleLeft = Math.max(0, -layerX);
+        const visibleTop = Math.max(0, -layerY);
+        const visibleRight = Math.min(layerOrigWidth, validWidth - layerX);
+        const visibleBottom = Math.min(layerOrigHeight, validHeight - layerY);
+
+        const visibleWidth = visibleRight - visibleLeft;
+        const visibleHeight = visibleBottom - visibleTop;
+
+        if (visibleWidth <= 0 || visibleHeight <= 0) return;
+
+        // Координаты источника на оригинальном изображении
+        const srcX = layerOrigX + visibleLeft;
+        const srcY = layerOrigY + visibleTop;
+
+        // Координаты назначения на временном canvas
+        const dstX = layerX + visibleLeft;
+        const dstY = layerY + visibleTop;
+
+        tempCtx.save();
+        tempCtx.strokeStyle = params.color ?? '#ff0000';
+        tempCtx.lineWidth = params.thickness ?? this.CONSTANTS.LINE_WIDTH;
+        tempCtx.strokeRect(dstX, dstY, visibleWidth, visibleHeight);
         tempCtx.restore();
     }
 
