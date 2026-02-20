@@ -99,6 +99,9 @@ export default class RectangleTool extends BaseTool {
         }
     }
 
+    /**
+     * Обновляет позицию preview прямоугольника
+     */
     updateOverlay() {
         const canvas = this.editor?.canvas;
         if (!canvas || !this.previewElement) return;
@@ -123,6 +126,9 @@ export default class RectangleTool extends BaseTool {
         }
     }
 
+    /**
+     * Очищает overlay инструмента
+     */
     cleanupOverlay() {
         if (this.overlay) {
             this.overlay.classList.remove('rectangle-mode');

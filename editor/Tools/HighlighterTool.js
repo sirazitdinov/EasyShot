@@ -105,6 +105,9 @@ export default class HighlighterTool extends BaseTool {
         }
     }
 
+    /**
+     * Очищает overlay инструмента
+     */
     cleanupOverlay() {
         if (this.overlay) {
             this.overlay.classList.remove('highlighter-mode');
@@ -120,6 +123,11 @@ export default class HighlighterTool extends BaseTool {
         super.cleanupOverlay();
     }
 
+    /**
+     * Обновляет настройку инструмента и применяет её к активному слою highlighter
+     * @param {string} key — имя параметра ('color', 'opacity')
+     * @param {string|number} value — новое значение
+     */
     updateSetting(key, value) {
         switch (key) {
             case 'color':

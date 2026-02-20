@@ -119,6 +119,9 @@ export default class HighlightTool extends BaseTool {
         }
     }
 
+    /**
+     * Очищает overlay инструмента
+     */
     cleanupOverlay() {
         if (this.overlay) {
             this.overlay.classList.remove('highlight-mode');
@@ -137,8 +140,8 @@ export default class HighlightTool extends BaseTool {
     }
 
     /**
-     * Обновляет настройку инструмента и применяет её к активному слою, если он текстовый
-     * @param {string} key — имя параметра ('textColor', 'textSize')
+     * Обновляет настройку инструмента и применяет её к активному слою highlight
+     * @param {string} key — имя параметра ('color', 'thickness')
      * @param {string|number} value — новое значение
      */
     updateSetting(key, value) {

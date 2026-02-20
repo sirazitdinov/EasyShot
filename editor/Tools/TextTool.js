@@ -93,6 +93,9 @@ export default class TextTool extends BaseTool {
         this.textPreview = null;
     }
 
+    /**
+     * Обновляет позицию overlay текстового слоя
+     */
     updateOverlay() {
         if (!this.overlay) {
             return;
@@ -301,6 +304,9 @@ export default class TextTool extends BaseTool {
         }
     }
 
+    /**
+     * Очищает overlay текстового инструмента
+     */
     cleanupOverlay() {
         if (this.isEditing) {
             this.finishEditing();

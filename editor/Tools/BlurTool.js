@@ -65,6 +65,9 @@ export default class BlurTool extends BaseTool {
         this.createPreviewElement('blurPreview', 'blur-mode');
     }
 
+    /**
+     * Очищает overlay инструмента
+     */
     cleanupOverlay() {
         if (this.overlay) {
             this.overlay.classList.remove('blur-mode');
