@@ -62,6 +62,7 @@ export default class ToolSettingsUI {
            inputElement.type = 'range';
            inputElement.min = field.min || 0;
            inputElement.max = field.max || 100;
+           inputElement.step = field.step || 1;
            inputElement.value = field.value;
            // Опционально: добавить отображение текущего значения
            const valueDisplay = document.createElement('span');

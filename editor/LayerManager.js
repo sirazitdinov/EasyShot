@@ -281,6 +281,8 @@ export default class LayerManager {
             crop: { iconPath: 'icons/crop.svg', name: 'Кадрирование' },
             blur: { iconPath: 'icons/droplet.svg', name: 'Размытие' },
             highlight: { iconPath: 'icons/rectangle.svg', name: 'Выделение' },
+            rectangle: { iconPath: 'icons/rectangle.svg', name: 'Прямоугольник' },
+            highlighter: { iconPath: 'icons/highlight.svg', name: 'Маркер' },
             line: { iconPath: 'icons/ArrowUpRight.svg', name: 'Стрелка' },
             text: { iconPath: 'icons/TextCreation.svg', name: 'Текст' }
         };

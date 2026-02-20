@@ -314,7 +314,8 @@ input[type="color"] {
 
 #selectionOverlay.crop-mode,
 #selectionOverlay.blur-mode,
-#selectionOverlay.highlight-mode,
+#selectionOverlay.rectangle-mode,
+#selectionOverlay.highlighter-mode,
 #selectionOverlay.text-mode,
 #selectionOverlay.line-mode {
     cursor: crosshair !important;
@@ -460,4 +461,14 @@ input[type="color"] {
 
 .text-editor-widget:focus {
     border-color: var(--button-active);
+}
+
+/* Preview элементы для инструментов */
+.rectangle-preview,
+.highlighter-preview {
+    position: absolute;
+    border: 1px dashed #FFA500;
+    box-sizing: border-box;
+    pointer-events: none;
+    z-index: 11;
 }

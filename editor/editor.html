@@ -18,8 +18,11 @@
             <button id="blurBtn" title="Размытие">
                 <img src="icons/droplet.svg" alt="Размытие" class="tool-icon">
             </button>
-            <button id="highlightBtn" title="Выделение">
-                <img src="icons/rectangle.svg" alt="Выделение" class="tool-icon">
+            <button id="rectangleBtn" title="Прямоугольник">
+                <img src="icons/rectangle.svg" alt="Прямоугольник" class="tool-icon">
+            </button>
+            <button id="highlighterBtn" title="Маркер">
+                <img src="icons/highlight.svg" alt="Маркер" class="tool-icon">
             </button>
             <button id="lineBtn" title="Стрелка">
                 <img src="icons/ArrowUpRight.svg" alt="Стрелка" class="tool-icon">
@@ -51,6 +54,21 @@
                         <label id="highlightColorLabel" style="display: none">
                             Цвет:
                             <input type="color" id="highlightColor" value="#ff0000" />
+                        </label>
+
+                        <label id="thicknessLabel" style="display: none">
+                            Толщина:
+                            <input type="range" id="thickness" min="1" max="10" value="2" />
+                        </label>
+
+                        <label id="highlighterColorLabel" style="display: none">
+                            Цвет:
+                            <input type="color" id="highlighterColor" value="#FFA500" />
+                        </label>
+
+                        <label id="highlighterOpacityLabel" style="display: none">
+                            Прозрачность:
+                            <input type="range" id="highlighterOpacity" min="0.1" max="1" step="0.1" value="0.3" />
                         </label>
 
                         <label id="formatLabel" style="display: none">

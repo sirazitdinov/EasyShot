@@ -2,7 +2,8 @@
 
 import CropTool from './Tools/CropTool.js';
 import BlurTool from './Tools/BlurTool.js';
-import HighlightTool from './Tools/HighlightTool.js';
+import RectangleTool from './Tools/RectangleTool.js';
+import HighlighterTool from './Tools/HighlighterTool.js';
 import LineTool from './Tools/LineTool.js';
 import TextTool from './Tools/TextTool.js';
 import ToolSettingsUI from './Tools/ToolSettingsUI.js';
@@ -39,7 +40,8 @@ export default class ImageEditor {
         // Обработчики для инструментов
         this.boundCropClick = () => this.setActiveTool(this.tools.crop);
         this.boundBlurClick = () => this.setActiveTool(this.tools.blur);
-        this.boundHighlightClick = () => this.setActiveTool(this.tools.highlight);
+        this.boundRectangleClick = () => this.setActiveTool(this.tools.rectangle);
+        this.boundHighlighterClick = () => this.setActiveTool(this.tools.highlighter);
         this.boundLineClick = () => this.setActiveTool(this.tools.line);
         this.boundTextClick = () => this.setActiveTool(this.tools.text);
 
@@ -141,7 +143,14 @@ export default class ImageEditor {
             highlight: {
                 colorInput: document.getElementById('highlightColor'),
                 colorLabel: document.getElementById('highlightColorLabel'),
-                thicknessInput: document.getElementById('thickness')
+                thicknessInput: document.getElementById('thickness'),
+                thicknessLabel: document.getElementById('thicknessLabel')
+            },
+            highlighter: {
+                colorInput: document.getElementById('highlighterColor'),
+                colorLabel: document.getElementById('highlighterColorLabel'),
+                opacityInput: document.getElementById('highlighterOpacity'),
+                opacityLabel: document.getElementById('highlighterOpacityLabel')
             },
             crop: {},
             blur: {
@@ -172,7 +181,8 @@ export default class ImageEditor {
         this.tools = {
             crop: new CropTool(this, this.settingsElements['crop']),
             blur: new BlurTool(this, this.settingsElements['blur']),
-            highlight: new HighlightTool(this, this.settingsElements['highlight']),
+            rectangle: new RectangleTool(this, this.settingsElements['highlight']),
+            highlighter: new HighlighterTool(this, this.settingsElements['highlighter']),
             line: new LineTool(this, this.settingsElements['line']),
             text: new TextTool(this, this.settingsElements['text'])
         };
@@ -365,7 +375,8 @@ export default class ImageEditor {
         // Кнопки инструментов
         document.getElementById('cropBtn').addEventListener('click', this.boundCropClick);
         document.getElementById('blurBtn').addEventListener('click', this.boundBlurClick);
-        document.getElementById('highlightBtn').addEventListener('click', this.boundHighlightClick);
+        document.getElementById('rectangleBtn').addEventListener('click', this.boundRectangleClick);
+        document.getElementById('highlighterBtn').addEventListener('click', this.boundHighlighterClick);
         document.getElementById('lineBtn').addEventListener('click', this.boundLineClick);
         document.getElementById('textBtn').addEventListener('click', this.boundTextClick);
 
@@ -764,6 +775,20 @@ export default class ImageEditor {
                 const thickness = layer.params?.thickness ?? this.CONSTANTS?.LINE_WIDTH ?? 2;
                 this.context.lineWidth = thickness;
                 this.context.strokeRect(
+                    layer.rect.x,
+                    layer.rect.y,
+                    layer.rect.width,
+                    layer.rect.height
+                );
+                this.context.restore();
+                return;
+            }
+
+            if (layer.type === "highlighter" && layer.rect) {
+                this.context.save();
+                this.context.fillStyle = layer.params?.color ?? "#FFA500";
+                this.context.globalAlpha = layer.params?.opacity ?? 0.3;
+                this.context.fillRect(
                     layer.rect.x,
                     layer.rect.y,
                     layer.rect.width,
@@ -1222,6 +1247,17 @@ export default class ImageEditor {
                         };
                         break;
 
+                    case 'rectangle':
+                        initialOptions = {
+                            type: 'highlight',
+                            rect: { x: coords.x, y: coords.y, width: 0, height: 0 },
+                            params: {
+                                color: this.tools.rectangle?.settings?.color ?? '#ff0000',
+                                thickness: this.tools.rectangle?.settings?.thickness ?? 2
+                            }
+                        };
+                        break;
+
                     case 'highlight':
                         initialOptions = {
                             type: 'highlight',
@@ -1229,6 +1265,17 @@ export default class ImageEditor {
                             params: {
                                 color: this.tools.highlight.settings?.color ?? '#ff0000',
                                 thickness: this.tools.highlight.settings?.thickness ?? 2
+                            }
+                        };
+                        break;
+
+                    case 'highlighter':
+                        initialOptions = {
+                            type: 'highlighter',
+                            rect: { x: coords.x, y: coords.y, width: 0, height: 0 },
+                            params: {
+                                color: this.tools.highlighter?.settings?.color ?? '#FFA500',
+                                opacity: this.tools.highlighter?.settings?.opacity ?? 0.3
                             }
                         };
                         break;
@@ -1280,6 +1327,8 @@ export default class ImageEditor {
                     } else if (type === 'blur' && this.activeTool.name === 'blur') {
                         this.activeTool.currentLayer = created;
                     } else if (type === 'highlight' && this.activeTool.name === 'highlight') {
+                        this.activeTool.currentLayer = created;
+                    } else if (type === 'rectangle' && this.activeTool.name === 'rectangle') {
                         this.activeTool.currentLayer = created;
                     } else if (type === 'line' && this.activeTool.name === 'line') {
                         this.activeTool.currentLayer = created;
@@ -1970,6 +2019,9 @@ export default class ImageEditor {
             case 'highlight':
                 this._drawHighlightLayer(tempCtx, layerOrigX, layerOrigY, layerOrigWidth, layerOrigHeight, params, cropCoords);
                 break;
+            case 'highlighter':
+                this._drawHighlighterLayer(tempCtx, layerOrigX, layerOrigY, layerOrigWidth, layerOrigHeight, params, cropCoords);
+                break;
             case 'text':
                 this._drawTextLayer(tempCtx, layerOrigX, layerOrigY, layerOrigWidth, layerOrigHeight, params, cropCoords);
                 break;
@@ -1988,26 +2040,26 @@ export default class ImageEditor {
      */
     _drawBlurredLayer(tempCtx, layerOrigX, layerOrigY, layerOrigWidth, layerOrigHeight, params, cropCoords) {
         const { validX, validY, validWidth, validHeight } = cropCoords;
-        
+
         // Вычисляем положение слоя относительно кроп-области
         const layerX = layerOrigX - validX;
         const layerY = layerOrigY - validY;
-        
+
         // Вычисляем видимую часть слоя внутри кроп-области
         const visibleLeft = Math.max(0, -layerX);
         const visibleTop = Math.max(0, -layerY);
         const visibleRight = Math.min(layerOrigWidth, validWidth - layerX);
         const visibleBottom = Math.min(layerOrigHeight, validHeight - layerY);
-        
+
         const visibleWidth = visibleRight - visibleLeft;
         const visibleHeight = visibleBottom - visibleTop;
-        
+
         if (visibleWidth <= 0 || visibleHeight <= 0) return;
-        
+
         // Координаты источника на оригинальном изображении
         const srcX = layerOrigX + visibleLeft;
         const srcY = layerOrigY + visibleTop;
-        
+
         // Координаты назначения на временном canvas
         const dstX = layerX + visibleLeft;
         const dstY = layerY + visibleTop;
@@ -2034,7 +2086,7 @@ export default class ImageEditor {
      */
     _drawHighlightLayer(tempCtx, layerOrigX, layerOrigY, layerOrigWidth, layerOrigHeight, params, cropCoords) {
         const { validX, validY, validWidth, validHeight } = cropCoords;
-        
+
         // Вычисляем положение слоя относительно кроп-области
         const layerX = layerOrigX - validX;
         const layerY = layerOrigY - validY;
@@ -2043,6 +2095,49 @@ export default class ImageEditor {
         tempCtx.strokeStyle = params.color;
         tempCtx.lineWidth = params.thickness || this.CONSTANTS.LINE_WIDTH;
         tempCtx.strokeRect(layerX, layerY, layerOrigWidth, layerOrigHeight);
+        tempCtx.restore();
+    }
+
+    /**
+     * Рисует слой маркера (highlighter) на временном canvas
+     * @param {CanvasRenderingContext2D} tempCtx - Контекст временного canvas
+     * @param {number} layerOrigX - X координата слоя в пространстве оригинального изображения
+     * @param {number} layerOrigY - Y координата слоя в пространстве оригинального изображения
+     * @param {number} layerOrigWidth - Ширина слоя в пространстве оригинального изображения
+     * @param {number} layerOrigHeight - Высота слоя в пространстве оригинального изображения
+     * @param {Object} params - Параметры слоя
+     * @param {Object} cropCoords - Координаты кропа
+     */
+    _drawHighlighterLayer(tempCtx, layerOrigX, layerOrigY, layerOrigWidth, layerOrigHeight, params, cropCoords) {
+        const { validX, validY, validWidth, validHeight } = cropCoords;
+
+        // Вычисляем положение слоя относительно кроп-области
+        const layerX = layerOrigX - validX;
+        const layerY = layerOrigY - validY;
+
+        // Вычисляем видимую часть слоя внутри кроп-области
+        const visibleLeft = Math.max(0, -layerX);
+        const visibleTop = Math.max(0, -layerY);
+        const visibleRight = Math.min(layerOrigWidth, validWidth - layerX);
+        const visibleBottom = Math.min(layerOrigHeight, validHeight - layerY);
+
+        const visibleWidth = visibleRight - visibleLeft;
+        const visibleHeight = visibleBottom - visibleTop;
+
+        if (visibleWidth <= 0 || visibleHeight <= 0) return;
+
+        // Координаты источника на оригинальном изображении
+        const srcX = layerOrigX + visibleLeft;
+        const srcY = layerOrigY + visibleTop;
+
+        // Координаты назначения на временном canvas
+        const dstX = layerX + visibleLeft;
+        const dstY = layerY + visibleTop;
+
+        tempCtx.save();
+        tempCtx.globalAlpha = params.opacity ?? 0.3;
+        tempCtx.fillStyle = params.color ?? '#FFA500';
+        tempCtx.fillRect(dstX, dstY, visibleWidth, visibleHeight);
         tempCtx.restore();
     }
 
@@ -2420,7 +2515,8 @@ export default class ImageEditor {
 
             document.getElementById('cropBtn')?.removeEventListener('click', this.boundCropClick);
             document.getElementById('blurBtn')?.removeEventListener('click', this.boundBlurClick);
-            document.getElementById('highlightBtn')?.removeEventListener('click', this.boundHighlightClick);
+            document.getElementById('rectangleBtn')?.removeEventListener('click', this.boundRectangleClick);
+            document.getElementById('highlighterBtn')?.removeEventListener('click', this.boundHighlighterClick);
             document.getElementById('lineBtn')?.removeEventListener('click', this.boundLineClick);
             document.getElementById('textBtn')?.removeEventListener('click', this.boundTextClick);
 
