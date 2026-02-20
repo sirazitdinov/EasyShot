@@ -86,8 +86,6 @@ export default class TextTool extends BaseTool {
 
         this.overlay.classList.add('text-mode');
         this.overlay.style.cursor = 'text';
-        this.overlay.style.border = '1px dashed #000';
-        this.overlay.style.boxSizing = 'border-box';
         this.overlay.style.pointerEvents = 'auto';
         this.overlay.style.display = 'block';
 
@@ -310,8 +308,6 @@ export default class TextTool extends BaseTool {
         if (this.overlay) {
             this.overlay.classList.remove('text-mode');
             this.overlay.style.cursor = '';
-            this.overlay.style.border = '';
-            this.overlay.style.boxSizing = '';
             this.overlay.style.pointerEvents = 'auto';
             // Не сбрасываем display, чтобы overlay оставался видимым для других инструментов
             this.overlay.style.display = 'block';
@@ -320,6 +316,10 @@ export default class TextTool extends BaseTool {
             this.overlay.style.top = '0';
             this.overlay.style.width = '';
             this.overlay.style.height = '';
+        }
+        // Скрываем preview элемент
+        if (this.previewElement) {
+            this.previewElement.style.display = 'none';
         }
         // Вызываем базовую очистку для удаления previewElement
         super.cleanupOverlay();

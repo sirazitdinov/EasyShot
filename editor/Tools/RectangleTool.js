@@ -131,6 +131,10 @@ export default class RectangleTool extends BaseTool {
             this.overlay.style.pointerEvents = 'auto';
             this.overlay.style.display = '';
         }
+        // Скрываем preview элемент
+        if (this.previewElement) {
+            this.previewElement.style.display = 'none';
+        }
         super.cleanupOverlay();
     }
 

@@ -129,6 +129,10 @@ export default class HighlightTool extends BaseTool {
             this.overlay.style.pointerEvents = 'auto'; // ✅ Возвращаем в исходное состояние для работы других инструментов
             this.overlay.style.display = '';
         }
+        // Скрываем preview элемент
+        if (this.previewElement) {
+            this.previewElement.style.display = 'none';
+        }
         super.cleanupOverlay();
     }
 

@@ -238,7 +238,9 @@ export default class ImageEditor {
         this.layerManager.init(); // Инициализация менеджера слоев
         this.initEventListeners();
         this.updateToolbarButtons();
-        this.loadVersion();
+        this.loadVersion().catch(err => {
+            console.error('Failed to load version:', err);
+        });
     }
 
     /**
@@ -1120,27 +1122,20 @@ export default class ImageEditor {
                 }
             }
 
-            // 2. Двойной клик → редактирование текста через prompt
+            // 2. Двойной клик по текстовому слою → inline-редактирование через textarea
             if (e.detail === 2 && hit?.type === 'text') {
                 e.preventDefault();
-                const newText = prompt('Введите текст:', hit.params.text || '');
-                if (newText !== null) {
-                    if (this.historyManager) {
-                        this.historyManager.commit('Edit text');
-                    }
-                    hit.params.text = newText;
-                    this.render();
-                    this.updateLayersPanel();
-                }
-                return;
-            }
-
-            // 2a. Одинарный клик по текстовому слою с активным инструментом Текст → inline-редактирование
-            if (hit?.type === 'text' && this.activeTool?.name === 'text') {
                 this.activeLayer = hit;
-                this.activeTool.currentLayer = hit;
-                this.activeTool.editText(hit);
                 this.updateLayersPanel();
+                
+                // Переключаемся на инструмент Текст и запускаем редактирование
+                this.switchToLayerTool('text');
+                
+                const textTool = this.tools.text;
+                if (textTool) {
+                    textTool.currentLayer = hit;
+                    textTool.editText(hit);
+                }
                 return;
             }
 
@@ -1215,12 +1210,14 @@ export default class ImageEditor {
 
             // 6. Попадание в слой → активация или move
             if (hit) {
-                // Если слой уже активен и это не текстовый слой — начинаем перетаскивание
-                // Иначе просто активируем слой
+                // Если слой уже активен ИЛИ это текстовый слой с активным инструментом Текст — начинаем перетаскивание
                 const isAlreadyActive = this.activeLayer === hit;
+                const isTextLayerWithTextTool = hit.type === 'text' && this.activeTool?.name === 'text';
                 
-                if (isAlreadyActive) {
-                    // Начинаем перетаскивание только если кликнули по уже активному слою
+                // Для текстового слоя с активным инструментом Текст — всегда начинаем перемещение (не редактирование)
+                // Редактирование запускается двойным кликом
+                if (isAlreadyActive || isTextLayerWithTextTool) {
+                    // Начинаем перетаскивание
                     const isRect = !!hit.rect;
                     this.dragState = {
                         start: coords,
@@ -1239,6 +1236,30 @@ export default class ImageEditor {
                     this.activeLayer = hit;
                     this.updateLayersPanel();
                     this.render();
+
+                    // Переключаем инструмент на соответствующий типу слоя и обновляем параметры
+                    this.switchToLayerTool(hit.type);
+
+                    // Обновляем currentLayer у активного инструмента
+                    const activeTool = this.activeTool;
+                    if (activeTool) {
+                        // Устанавливаем currentLayer только если тип слоя совпадает с типом инструмента
+                        if (activeTool.name === hit.type) {
+                            activeTool.currentLayer = hit;
+                            // Обновляем настройки инструмента из параметров слоя
+                            if (activeTool.settings && hit.params) {
+                                Object.assign(activeTool.settings, hit.params);
+                                // Обновляем UI настроек с новыми значениями
+                                if (typeof activeTool.updateSettingsUI === 'function') {
+                                    activeTool.updateSettingsUI();
+                                }
+                            }
+                        } else {
+                            activeTool.currentLayer = null;
+                        }
+                        // Обновляем overlay активного инструмента
+                        activeTool.updateOverlay();
+                    }
                 }
                 return;
             }
@@ -1475,6 +1496,11 @@ export default class ImageEditor {
             }
 
             this.render();
+            
+            // Обновляем overlay активного инструмента для отображения превью
+            if (this.activeTool && typeof this.activeTool.updateOverlay === 'function') {
+                this.activeTool.updateOverlay();
+            }
         } catch (error) {
             console.error('Error in onMouseMove:', error);
         }
@@ -1508,6 +1534,11 @@ export default class ImageEditor {
 
             this.render();
             this.updateLayersPanel();
+            
+            // Обновляем overlay активного инструмента
+            if (this.activeTool && typeof this.activeTool.updateOverlay === 'function') {
+                this.activeTool.updateOverlay();
+            }
         } catch (error) {
             console.error('Error in onMouseUp:', error);
         }
@@ -1813,9 +1844,13 @@ export default class ImageEditor {
             const wrapper = this.canvas.parentElement; // .canvas-wrapper
             const r = wrapper.getBoundingClientRect();
             const canvasR = this.canvas.getBoundingClientRect();
-            // Защита от деления на ноль
-            // if (!r.width || !r.height) return { x: 0, y: 0 };
-
+            
+            // Защита от деления на ноль при нулевых размерах canvas
+            if (!this.canvas.clientWidth || !this.canvas.clientHeight) {
+                console.warn('getCanvasCoords: canvas has zero dimensions');
+                return { x: 0, y: 0 };
+            }
+            
             return {
                 x: (event.clientX - canvasR.left) * (this.canvas.width / this.canvas.clientWidth),
                 y: (event.clientY - canvasR.top) * (this.canvas.height / this.canvas.clientHeight)
