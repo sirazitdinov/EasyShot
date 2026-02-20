@@ -205,33 +205,31 @@ export default class HistoryManager {
         // 1. Восстанавливаем пиксели
         this.editor.context.putImageData(imageData, 0, 0);
 
-        // 2. Восстанавливаем параметры слоёв (rect/points/params), но НЕ imageData — они уже на холсте
-        if (layerManager && Array.isArray(layers) && layers.length === layerManager.layers.length) {
-        layerManager.layers.forEach((layer, i) => {
-            const saved = layers[i];
-            if (saved) {
-            layer.rect = saved.rect ? { ...saved.rect } : null;
-            layer.points = saved.points ? { ...saved.points } : null;
-            layer.params = saved.params ? { ...saved.params } : null;
-            layer.visible = saved.visible;
+        // 2. Восстанавливаем слои полностью
+        if (layerManager && Array.isArray(layers)) {
+            // Сохраняем текущий активный слой
+            const wasActiveLayerId = layerManager.activeLayer?.id;
+            
+            // Полностью заменяем слои
+            layerManager.layers = layers.map(saved => ({
+                id: saved.id,
+                type: saved.type,
+                visible: saved.visible,
+                rect: saved.rect ? { ...saved.rect } : null,
+                points: saved.points ? { ...saved.points } : null,
+                params: saved.params ? { ...saved.params } : null
+            }));
+            
+            // Восстанавливаем активный слой
+            if (activeLayerId) {
+                layerManager.setActiveLayerById(activeLayerId);
+            } else {
+                layerManager.activeLayerIndex = -1;
             }
-        });
         }
 
-        // 3. Активный слой
-        if (layerManager) {
-        if (activeLayerId) {
-            layerManager.setActiveLayerById(activeLayerId);
-        } else {
-            layerManager.activeLayerIndex = -1;
-        }
-        }
-
-        // 4. Активный инструмент (опционально — можно оставить на усмотрение EditorCore)
-        // Например: при undo не менять активный инструмент — оставить как есть.
-
-        // 5. Обновление UI
-        this.editor.render(); // или editor.redrawCanvas(), если слои растровые
+        // 3. Обновление UI
+        this.editor.render();
         this.editor.updateLayersPanel();
     }
 
