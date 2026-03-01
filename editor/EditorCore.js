@@ -350,6 +350,16 @@ export default class ImageEditor {
                 button.classList.toggle('active', toolType === activeToolType);
             }
         });
+        
+        // Обновление состояния кнопок undo/redo
+        const undoBtn = document.getElementById('undoBtn');
+        const redoBtn = document.getElementById('redoBtn');
+        if (undoBtn) {
+            undoBtn.disabled = !this.historyManager?.canUndo();
+        }
+        if (redoBtn) {
+            redoBtn.disabled = !this.historyManager?.canRedo();
+        }
     }
 
     /**
@@ -2137,10 +2147,61 @@ export default class ImageEditor {
         const layerX = layerOrigX - validX;
         const layerY = layerOrigY - validY;
 
+        // Координаты прямоугольника слоя относительно кроп-области
+        const left = layerX;
+        const top = layerY;
+        const right = layerX + layerOrigWidth;
+        const bottom = layerY + layerOrigHeight;
+
+        // Границы кроп-области (0, 0, validWidth, validHeight)
+        // Рисуем только те части линий, которые попадают в кроп-область
+
         tempCtx.save();
         tempCtx.strokeStyle = params.color;
         tempCtx.lineWidth = params.thickness || this.CONSTANTS.LINE_WIDTH;
-        tempCtx.strokeRect(layerX, layerY, layerOrigWidth, layerOrigHeight);
+        tempCtx.beginPath();
+
+        // Верхняя линия (y = top, от left до right)
+        if (top >= 0 && top <= validHeight) {
+            const xStart = Math.max(0, left);
+            const xEnd = Math.min(right, validWidth);
+            if (xStart < xEnd) {
+                tempCtx.moveTo(xStart, top);
+                tempCtx.lineTo(xEnd, top);
+            }
+        }
+
+        // Нижняя линия (y = bottom, от left до right)
+        if (bottom >= 0 && bottom <= validHeight) {
+            const xStart = Math.max(0, left);
+            const xEnd = Math.min(right, validWidth);
+            if (xStart < xEnd) {
+                tempCtx.moveTo(xStart, bottom);
+                tempCtx.lineTo(xEnd, bottom);
+            }
+        }
+
+        // Левая линия (x = left, от top до bottom)
+        if (left >= 0 && left <= validWidth) {
+            const yStart = Math.max(0, top);
+            const yEnd = Math.min(bottom, validHeight);
+            if (yStart < yEnd) {
+                tempCtx.moveTo(left, yStart);
+                tempCtx.lineTo(left, yEnd);
+            }
+        }
+
+        // Правая линия (x = right, от top до bottom)
+        if (right >= 0 && right <= validWidth) {
+            const yStart = Math.max(0, top);
+            const yEnd = Math.min(bottom, validHeight);
+            if (yStart < yEnd) {
+                tempCtx.moveTo(right, yStart);
+                tempCtx.lineTo(right, yEnd);
+            }
+        }
+
+        tempCtx.stroke();
         tempCtx.restore();
     }
 
@@ -2161,29 +2222,61 @@ export default class ImageEditor {
         const layerX = layerOrigX - validX;
         const layerY = layerOrigY - validY;
 
-        // Вычисляем видимую часть слоя внутри кроп-области
-        const visibleLeft = Math.max(0, -layerX);
-        const visibleTop = Math.max(0, -layerY);
-        const visibleRight = Math.min(layerOrigWidth, validWidth - layerX);
-        const visibleBottom = Math.min(layerOrigHeight, validHeight - layerY);
+        // Координаты прямоугольника слоя относительно кроп-области
+        const left = layerX;
+        const top = layerY;
+        const right = layerX + layerOrigWidth;
+        const bottom = layerY + layerOrigHeight;
 
-        const visibleWidth = visibleRight - visibleLeft;
-        const visibleHeight = visibleBottom - visibleTop;
-
-        if (visibleWidth <= 0 || visibleHeight <= 0) return;
-
-        // Координаты источника на оригинальном изображении
-        const srcX = layerOrigX + visibleLeft;
-        const srcY = layerOrigY + visibleTop;
-
-        // Координаты назначения на временном canvas
-        const dstX = layerX + visibleLeft;
-        const dstY = layerY + visibleTop;
+        // Границы кроп-области (0, 0, validWidth, validHeight)
+        // Рисуем только те части линий, которые попадают в кроп-область
 
         tempCtx.save();
         tempCtx.strokeStyle = params.color ?? '#ff0000';
         tempCtx.lineWidth = params.thickness ?? this.CONSTANTS.LINE_WIDTH;
-        tempCtx.strokeRect(dstX, dstY, visibleWidth, visibleHeight);
+        tempCtx.beginPath();
+
+        // Верхняя линия (y = top, от left до right)
+        if (top >= 0 && top <= validHeight) {
+            const xStart = Math.max(0, left);
+            const xEnd = Math.min(right, validWidth);
+            if (xStart < xEnd) {
+                tempCtx.moveTo(xStart, top);
+                tempCtx.lineTo(xEnd, top);
+            }
+        }
+
+        // Нижняя линия (y = bottom, от left до right)
+        if (bottom >= 0 && bottom <= validHeight) {
+            const xStart = Math.max(0, left);
+            const xEnd = Math.min(right, validWidth);
+            if (xStart < xEnd) {
+                tempCtx.moveTo(xStart, bottom);
+                tempCtx.lineTo(xEnd, bottom);
+            }
+        }
+
+        // Левая линия (x = left, от top до bottom)
+        if (left >= 0 && left <= validWidth) {
+            const yStart = Math.max(0, top);
+            const yEnd = Math.min(bottom, validHeight);
+            if (yStart < yEnd) {
+                tempCtx.moveTo(left, yStart);
+                tempCtx.lineTo(left, yEnd);
+            }
+        }
+
+        // Правая линия (x = right, от top до bottom)
+        if (right >= 0 && right <= validWidth) {
+            const yStart = Math.max(0, top);
+            const yEnd = Math.min(bottom, validHeight);
+            if (yStart < yEnd) {
+                tempCtx.moveTo(right, yStart);
+                tempCtx.lineTo(right, yEnd);
+            }
+        }
+
+        tempCtx.stroke();
         tempCtx.restore();
     }
 
@@ -2204,29 +2297,28 @@ export default class ImageEditor {
         const layerX = layerOrigX - validX;
         const layerY = layerOrigY - validY;
 
-        // Вычисляем видимую часть слоя внутри кроп-области
-        const visibleLeft = Math.max(0, -layerX);
-        const visibleTop = Math.max(0, -layerY);
-        const visibleRight = Math.min(layerOrigWidth, validWidth - layerX);
-        const visibleBottom = Math.min(layerOrigHeight, validHeight - layerY);
+        // Координаты прямоугольника слоя относительно кроп-области
+        const left = layerX;
+        const top = layerY;
+        const right = layerX + layerOrigWidth;
+        const bottom = layerY + layerOrigHeight;
 
-        const visibleWidth = visibleRight - visibleLeft;
-        const visibleHeight = visibleBottom - visibleTop;
+        // Вычисляем пересечение с кроп-областью
+        const clipLeft = Math.max(0, left);
+        const clipTop = Math.max(0, top);
+        const clipRight = Math.min(validWidth, right);
+        const clipBottom = Math.min(validHeight, bottom);
 
-        if (visibleWidth <= 0 || visibleHeight <= 0) return;
+        const clipWidth = clipRight - clipLeft;
+        const clipHeight = clipBottom - clipTop;
 
-        // Координаты источника на оригинальном изображении
-        const srcX = layerOrigX + visibleLeft;
-        const srcY = layerOrigY + visibleTop;
-
-        // Координаты назначения на временном canvas
-        const dstX = layerX + visibleLeft;
-        const dstY = layerY + visibleTop;
+        // Если нет пересечения — не рисуем
+        if (clipWidth <= 0 || clipHeight <= 0) return;
 
         tempCtx.save();
         tempCtx.globalAlpha = params.opacity ?? 0.3;
         tempCtx.fillStyle = params.color ?? '#FFA500';
-        tempCtx.fillRect(dstX, dstY, visibleWidth, visibleHeight);
+        tempCtx.fillRect(clipLeft, clipTop, clipWidth, clipHeight);
         tempCtx.restore();
     }
 

@@ -27,6 +27,30 @@ button {
     transition: background-color 0.2s ease;
 }
 
+/* Кнопки undo/redo */
+#undoBtn, #redoBtn {
+    padding: 8px;
+    border-radius: 4px;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+}
+
+#undoBtn:hover, #redoBtn:hover {
+    background-color: var(--button-hover);
+}
+
+#undoBtn:disabled, #redoBtn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+#undoBtn img, #redoBtn img {
+    width: 24px;
+    height: 24px;
+    display: block;
+}
+
 .container {
     display: flex;
     min-width: 850px;
@@ -86,12 +110,6 @@ button {
     height: 24px;
     object-fit: contain;
     width: 24px;
-}
-
-.main-content {
-    display: flex;
-    flex-grow: 1;
-    gap: 10px; /* Отступ между холстом и панелью слоев */
 }
 
 .main-area {
@@ -299,14 +317,6 @@ input[type="color"] {
     width: 30px;
 }
 
-/* Затемнение области кропа */
-.crop-overlay {
-    background-color: rgba(0, 0, 0, 0.5);
-    pointer-events: none;
-    position: absolute;
-    z-index: 5;
-}
-
 /* Стили для курсоров */
 #selectionOverlay.active {
     cursor: crosshair;
@@ -479,14 +489,4 @@ input[type="color"] {
 
 .text-editor-widget:focus {
     border-color: var(--button-active);
-}
-
-/* Preview элементы для инструментов */
-.rectangle-preview,
-.highlighter-preview {
-    position: absolute;
-    border: 1px dashed #FFA500;
-    box-sizing: border-box;
-    pointer-events: none;
-    z-index: 11;
 }
