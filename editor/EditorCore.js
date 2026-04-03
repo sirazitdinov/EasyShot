@@ -2601,24 +2601,29 @@ export default class ImageEditor {
      * Финализирует операцию кропа: история, UI, сброс инструмента
      * @param {Object} cropLayer - Crop-слой
      */
-    _finalizeCrop(cropLayer) {
-        // Обновляем панель слоев
-        this.layerManager.updateLayersPanel();
+    async _finalizeCrop(cropLayer) {
+        try {
+            // Обновляем панель слоев
+            this.layerManager.updateLayersPanel();
 
-        // Фиксируем состояние в истории
-        if (this.historyManager) {
-            this.historyManager.commit('Apply crop');
+            // Фиксируем состояние в истории
+            if (this.historyManager) {
+                this.historyManager.commit('Apply crop');
+            }
+
+            // Обновляем информацию об изображении
+            const blob = await new Promise((resolve) => this.canvas.toBlob(resolve, 'image/png'));
+            const newFile = new File([blob], "cropped_image.png", { type: 'image/png' });
+            this.updateImageInfo(newFile);
+
+            // Очищаем временные данные
+            this._cropCoords = null;
+
+            // Сбрасываем активный инструмент
+            this.setActiveTool(null);
+        } catch (error) {
+            console.error('Error finalizing crop:', error);
         }
-
-        // Обновляем информацию об изображении
-        const newFile = new File([this.canvas.toDataURL()], "cropped_image.png");
-        this.updateImageInfo(newFile);
-
-        // Сбрасываем активный инструмент
-        this.setActiveTool(null);
-
-        // Очищаем временные данные
-        this._cropCoords = null;
     }
 
     /**
