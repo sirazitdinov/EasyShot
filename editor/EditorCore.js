@@ -29,8 +29,8 @@ export default class ImageEditor {
         // Обработчики для кнопок
         this.boundFileClick = () => this.fileInput.click();
         this.boundFileChange = (e) => this.loadImage(e.target.files[0]);
-        this.boundSaveClick = () => {
-            this.applyCrop();
+        this.boundSaveClick = async () => {
+            await this.applyCrop();
             this.saveImage();
         };
         this.boundRedoClick = () => {
@@ -408,16 +408,76 @@ export default class ImageEditor {
     }
 
     /**
+     * Сбрасывает состояние редактора к начальному состоянию
+     * Вызывается при загрузке нового изображения
+     */
+    resetEditor() {
+        // Сброс активного инструмента
+        if (this.activeTool) {
+            try {
+                if (typeof this.activeTool.cleanupOverlay === 'function') {
+                    this.activeTool.cleanupOverlay();
+                }
+                if (typeof this.activeTool.deactivate === 'function') {
+                    this.activeTool.deactivate();
+                }
+            } catch (error) {
+                console.error('Error deactivating tool during reset:', error);
+            }
+            this.activeTool = null;
+        }
+
+        // Сброс изображения
+        this.image = null;
+        this.originalImage = null;
+        this.scale = 1;
+        this.offsetX = 0;
+        this.offsetY = 0;
+
+        // Очистка холста
+        this.canvas.width = 800;
+        this.canvas.height = 600;
+        this.context.clearRect(0, 0, this.canvas.width, this.canvas.height);
+        this.context.fillStyle = '#fff';
+        this.context.fillRect(0, 0, this.canvas.width, this.canvas.height);
+
+        // Сброс overlay
+        if (this.selectionOverlay) {
+            this.selectionOverlay.style.cssText = '';
+            this.selectionOverlay.className = '';
+            while (this.selectionOverlay.firstChild) {
+                this.selectionOverlay.removeChild(this.selectionOverlay.firstChild);
+            }
+            this.selectionOverlay.style.width = `${this.canvas.clientWidth}px`;
+            this.selectionOverlay.style.height = `${this.canvas.clientHeight}px`;
+        }
+
+        // Сброс менеджера слоев
+        if (this.layerManager) {
+            this.layerManager.layers = [];
+            this.layerManager.activeLayerIndex = -1;
+            this.layerManager.dragState = null;
+        }
+
+        // Сброс истории
+        if (this.historyManager) {
+            this.historyManager.clear();
+        }
+
+        // Обновление UI
+        this.updateToolbarButtons();
+        if (this.layerManager) {
+            this.layerManager.updateLayersPanel();
+        }
+    }
+
+    /**
      * Загружает изображение в редактор
      * @param {File} file - Файл изображения для загрузки
      */
     loadImage(file) {
-
-        // Сброс активного инструмента
-        if (this.activeTool) {
-            this.activeTool.deactivate();
-            this.activeTool = null;
-        }
+        // Полный сброс редактора перед загрузкой нового изображения
+        this.resetEditor();
 
         if (!file) return;
 
@@ -1874,7 +1934,7 @@ export default class ImageEditor {
     /**
      * Применяет кроп к изображению, обрезая его до выбранной области
      */
-    applyCrop() {
+    async applyCrop() {
         try {
             // 1. Валидация и подготовка
             const cropData = this._validateCropData();
@@ -1898,7 +1958,7 @@ export default class ImageEditor {
             this._updateLayersAfterCrop(cropCoords, cropData.cropLayer);
 
             // 7. Финализация: история, UI, сброс инструмента
-            this._finalizeCrop(cropData.cropLayer);
+            await this._finalizeCrop(cropData.cropLayer);
 
         } catch (error) {
             console.error('Error during crop operation:', error);
