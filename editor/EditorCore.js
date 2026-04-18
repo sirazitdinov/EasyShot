@@ -47,6 +47,7 @@ export default class ImageEditor {
 
         // Обработчики для событий окна и документа
         this.boundResize = () => this.updateCanvasDisplay();
+        this.boundPaste = (e) => this.handlePaste(e);
         this.boundLayersListClick = (e) => {
             const layerItem = e.target.closest('.layer-item');
             if (layerItem) {
@@ -395,6 +396,9 @@ export default class ImageEditor {
         // Обработка изменения размера окна
         window.addEventListener('resize', this.boundResize);
 
+        // Вставка изображения из буфера обмена
+        document.addEventListener('paste', this.boundPaste);
+
         // Удаление слоя по Delete
         document.addEventListener('keydown', this.boundKeyDown);
 
@@ -538,6 +542,23 @@ export default class ImageEditor {
             img.src = e.target.result;
         };
         reader.readAsDataURL(file);
+    }
+
+    /**
+     * Обрабатывает вставку изображения из буфера обмена (Ctrl+V / Cmd+V)
+     * @param {ClipboardEvent} e - Событие вставки
+     */
+    handlePaste(e) {
+        const items = (e.clipboardData || e.originalEvent.clipboardData).items;
+        const imageItem = Array.from(items).find(item => item.type.startsWith('image/'));
+
+        if (!imageItem) return;
+
+        e.preventDefault();
+
+        const blob = imageItem.getAsFile();
+        const file = new File([blob], `pasted-image.${blob.type.split('/')[1] || 'png'}`, { type: blob.type });
+        this.loadImage(file);
     }
 
     /**

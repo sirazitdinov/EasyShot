@@ -3,7 +3,7 @@
     "name": "EasyShot",
     "version": "0.1.005",
     "description": "EasyShot is a simple and convenient screenshot extension with a built-in image editor. Capture screens, add annotations, and share your screenshots.",
-    "permissions": ["activeTab", "scripting", "downloads", "tabs"],
+    "permissions": ["activeTab", "scripting", "downloads", "tabs", "clipboardRead"],
     "host_permissions": ["<all_urls>"],
     "background": {
         "service_worker": "background.js"
