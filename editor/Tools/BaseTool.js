@@ -89,6 +89,7 @@ export default class BaseTool {
     /**
      * Обновление позиции/размера превью
      * Предназначен для переопределения в дочерних классах
+     * @param {Object} rectOrPoints - Объект с координатами и размерами ({x, y, width, height}) или точками
      */
     updatePreviewPosition(rectOrPoints) { }
 
@@ -108,9 +109,7 @@ export default class BaseTool {
      */
     updateSettingsUI() {
         if (!this.settings || !this.editor.toolSettingsUI) return;
-        
-        // Перерисовываем панель настроек с обновлёнными значениями
-        const config = this.getUISettingsConfig();
+
         this.editor.toolSettingsUI.renderSettings(this);
     }
 }

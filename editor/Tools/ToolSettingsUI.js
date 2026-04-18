@@ -57,7 +57,7 @@ export default class ToolSettingsUI {
            inputElement.value = field.value;
            break;
 
-         case 'range':
+         case 'range': {
            inputElement = document.createElement('input');
            inputElement.type = 'range';
            inputElement.min = field.min || 0;
@@ -73,7 +73,7 @@ export default class ToolSettingsUI {
            });
            fieldContainer._valueDisplay = valueDisplay;
            break;
-
+           }
          case 'number':
            inputElement = document.createElement('input');
            inputElement.type = 'number';

@@ -902,11 +902,10 @@ export default class ImageEditor {
                 this.context.lineWidth = thickness;
                 this.context.lineCap = "round";
 
-                // Вычисляем угол и длину линии
+                // Вычисляем угол линии
                 const dx = x2 - x1;
                 const dy = y2 - y1;
                 const angle = Math.atan2(dy, dx);
-                const lineLength = Math.sqrt(dx * dx + dy * dy);
 
                 // Параметры стрелки-треугольника (с минимальными значениями для видимости)
                 const minThickness = Math.max(thickness, 3); // Минимум 3px для видимости
@@ -1911,8 +1910,6 @@ export default class ImageEditor {
      */
     getCanvasCoords(event) {
         try {
-            const wrapper = this.canvas.parentElement; // .canvas-wrapper
-            const r = wrapper.getBoundingClientRect();
             const canvasR = this.canvas.getBoundingClientRect();
             
             // Защита от деления на ноль при нулевых размерах canvas
@@ -1949,7 +1946,7 @@ export default class ImageEditor {
             if (!tempCanvas) return;
 
             // 4. Применение эффектов слоёв к кропнутому изображению
-            this._applyLayersToCroppedCanvas(tempCtx, cropCoords, cropData.cropLayer);
+            this._applyLayersToCroppedCanvas(tempCtx, cropCoords);
 
             // 5. Обновление основного canvas и данных изображения
             this._updateCanvasWithCroppedImage(tempCanvas, cropCoords);
@@ -1958,7 +1955,7 @@ export default class ImageEditor {
             this._updateLayersAfterCrop(cropCoords, cropData.cropLayer);
 
             // 7. Финализация: история, UI, сброс инструмента
-            await this._finalizeCrop(cropData.cropLayer);
+            await this._finalizeCrop();
 
         } catch (error) {
             console.error('Error during crop operation:', error);
@@ -2085,11 +2082,8 @@ export default class ImageEditor {
      * Применяет эффекты слоёв (blur, highlight, line, text) к кропнутому canvas
      * @param {CanvasRenderingContext2D} tempCtx - Контекст временного canvas
      * @param {Object} cropCoords - Координаты кропа
-     * @param {Object} cropLayer - Crop-слой
      */
-    _applyLayersToCroppedCanvas(tempCtx, cropCoords, cropLayer) {
-        const { validX, validY, validWidth, validHeight, currentCanvasScaleX, currentCanvasScaleY } = cropCoords;
-
+    _applyLayersToCroppedCanvas(tempCtx, cropCoords) {
         if (!this.layerManager.layers || !Array.isArray(this.layerManager.layers)) return;
 
         // Фильтруем crop-слой и применяем остальные
@@ -2394,7 +2388,15 @@ export default class ImageEditor {
      */
     _drawTextLayer(tempCtx, layerOrigX, layerOrigY, layerOrigWidth, layerOrigHeight, params, cropCoords) {
         const { validX, validY, validWidth, validHeight } = cropCoords;
-        
+
+        // Проверяем, находится ли текстовый слой полностью за пределами кроп-области
+        if (layerOrigX > validX + validWidth ||
+            layerOrigY > validY + validHeight ||
+            layerOrigX + layerOrigWidth < validX ||
+            layerOrigY + layerOrigHeight < validY) {
+            return;
+        }
+
         // Вычисляем положение слоя относительно кроп-области
         const textX = layerOrigX - validX;
         const textY = layerOrigY - validY;
@@ -2659,9 +2661,8 @@ export default class ImageEditor {
 
     /**
      * Финализирует операцию кропа: история, UI, сброс инструмента
-     * @param {Object} cropLayer - Crop-слой
      */
-    async _finalizeCrop(cropLayer) {
+    async _finalizeCrop() {
         try {
             // Обновляем панель слоев
             this.layerManager.updateLayersPanel();

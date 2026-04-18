@@ -207,9 +207,6 @@ export default class HistoryManager {
 
         // 2. Восстанавливаем слои полностью
         if (layerManager && Array.isArray(layers)) {
-            // Сохраняем текущий активный слой
-            const wasActiveLayerId = layerManager.activeLayer?.id;
-            
             // Полностью заменяем слои
             layerManager.layers = layers.map(saved => ({
                 id: saved.id,
@@ -219,7 +216,7 @@ export default class HistoryManager {
                 points: saved.points ? { ...saved.points } : null,
                 params: saved.params ? { ...saved.params } : null
             }));
-            
+
             // Восстанавливаем активный слой
             if (activeLayerId) {
                 layerManager.setActiveLayerById(activeLayerId);
@@ -228,9 +225,14 @@ export default class HistoryManager {
             }
         }
 
-        // 3. Обновление UI
-        this.editor.render();
-        this.editor.updateLayersPanel();
+        // 3. Восстанавливаем активный инструмент
+        if (activeToolName && this.editor.tools[activeToolName]) {
+            this.editor.setActiveTool(this.editor.tools[activeToolName]);
+        }
+
+        // 4. Обновление UI
+        this.editor.render?.();
+        this.editor.updateLayersPanel?.();
     }
 
     // === Интеграция с UI ===
