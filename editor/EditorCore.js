@@ -55,6 +55,11 @@ export default class ImageEditor {
             }
         };
         this.boundKeyDown = (e) => {
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                this.resetSelection();
+                return;
+            }
             if (e.key === 'Delete' && this.layerManager.activeLayer) {
                 e.preventDefault();
                 this.deleteActiveLayer();
@@ -569,6 +574,11 @@ export default class ImageEditor {
     saveImage(format = 'png', quality = 0.9) {
 
         try {
+            // Временно снимаем выделение, чтобы ручки управления не попали на сохранённое изображение
+            const savedActiveLayerIndex = this.layerManager.activeLayerIndex;
+            this.layerManager.activeLayerIndex = -1;
+            this.render();
+
             let canvasToSave = this.canvas;
 
             // Проверяем, что canvas существует
@@ -596,6 +606,10 @@ export default class ImageEditor {
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
+
+            // Восстанавливаем выделение
+            this.layerManager.activeLayerIndex = savedActiveLayerIndex;
+            this.render();
 
         } catch (err) {
             console.error('ERROR in saveImage:', err);
@@ -1763,6 +1777,7 @@ export default class ImageEditor {
             this.dragState = null;
             this.selectionOverlay.className = '';
             this.selectionOverlay.style.cursor = 'default';
+            this.setActiveTool(null);
             this.render();
             this.updateLayersPanel();
         } catch (error) {
@@ -1784,6 +1799,10 @@ export default class ImageEditor {
             Object.values(this.tools).forEach(tool => {
                 if (tool.currentLayer?.id === deletedLayer?.id) {
                     tool.currentLayer = null;
+                }
+                // Скрываем preview элементы всех инструментов
+                if (typeof tool.removePreviewElement === 'function') {
+                    tool.removePreviewElement();
                 }
             });
 
@@ -1848,58 +1867,47 @@ export default class ImageEditor {
      * @param {number} fontSize - Размер шрифта
      */
     wrapTextInRect(context, text, x, y, maxWidth, maxHeight, fontSize) {
-        if (!text || maxWidth <= 0 || maxHeight <= 0) return; // Проверяем на валидность
+        if (!text || maxWidth <= 0 || maxHeight <= 0) return;
 
         try {
-            const words = text.split(' ');
-            let line = '';
-            let currentY = y;
             const lineHeight = fontSize * 1.2;
+            let currentY = y;
 
-            for (let i = 0; i < words.length; i++) {
-                const testLine = line + words[i] + ' ';
-                const metrics = context.measureText(testLine);
-                const testWidth = metrics.width;
+            const paragraphs = text.split('\n');
 
-                // Проверяем, помещается ли строка по ширине
-                if (testWidth > maxWidth && i > 0) {
-                    // Проверяем, помещается ли строка по высоте
-                    if (currentY + lineHeight > y + maxHeight) {
-                        // Если не помещается, рисуем многоточие в предыдущей строке
-                        if (line.trim() !== '') {
-                            // Обрезаем строку, добавляем ...
-                            let truncatedLine = line.trim();
-                            let lastSpaceIndex = truncatedLine.lastIndexOf(' ');
-                            while (context.measureText(truncatedLine + '...').width > maxWidth && lastSpaceIndex > 0) {
-                                truncatedLine = truncatedLine.substring(0, lastSpaceIndex);
-                                lastSpaceIndex = truncatedLine.lastIndexOf(' ');
-                            }
-                            context.fillText(truncatedLine + '...', x, currentY);
-                        }
-                        return; // Выходим, если высота превышена
+            for (let p = 0; p < paragraphs.length; p++) {
+                const paragraph = paragraphs[p];
+
+                if (paragraph === '') {
+                    if (currentY + lineHeight <= y + maxHeight) {
+                        currentY += lineHeight;
                     }
-                    // Рисуем текущую строку
-                    context.fillText(line, x, currentY);
-                    // Начинаем новую строку
-                    line = words[i] + ' ';
-                    currentY += lineHeight;
-                } else {
-                    line = testLine;
+                    continue;
                 }
-            }
 
-            // Проверяем, помещается ли последняя строка по высоте
-            if (currentY + lineHeight <= y + maxHeight) {
-                context.fillText(line, x, currentY);
-            } else {
-                // Если последняя строка не помещается, обрезаем её
-                let truncatedLine = line.trim();
-                let lastSpaceIndex = truncatedLine.lastIndexOf(' ');
-                while (context.measureText(truncatedLine + '...').width > maxWidth && lastSpaceIndex > 0) {
-                    truncatedLine = truncatedLine.substring(0, lastSpaceIndex);
-                    lastSpaceIndex = truncatedLine.lastIndexOf(' ');
+                const words = paragraph.split(' ');
+                let line = '';
+
+                for (let i = 0; i < words.length; i++) {
+                    const testLine = line + words[i] + ' ';
+                    const metrics = context.measureText(testLine);
+                    const testWidth = metrics.width;
+
+                    if (testWidth > maxWidth && i > 0) {
+                        if (currentY + lineHeight > y + maxHeight) return;
+                        context.fillText(line.trim(), x, currentY);
+                        line = words[i] + ' ';
+                        currentY += lineHeight;
+                    } else {
+                        line = testLine;
+                    }
                 }
-                context.fillText(truncatedLine + '...', x, currentY);
+
+                if (line.trim() !== '') {
+                    if (currentY + lineHeight > y + maxHeight) return;
+                    context.fillText(line.trim(), x, currentY);
+                    currentY += lineHeight;
+                }
             }
         } catch (error) {
             console.error('Error in wrapTextInRect:', error);
@@ -1970,7 +1978,7 @@ export default class ImageEditor {
             this._applyLayersToCroppedCanvas(tempCtx, cropCoords);
 
             // 5. Обновление основного canvas и данных изображения
-            this._updateCanvasWithCroppedImage(tempCanvas, cropCoords);
+            await this._updateCanvasWithCroppedImage(tempCanvas, cropCoords);
 
             // 6. Пересчёт координат слоёв и удаление crop-слоя
             this._updateLayersAfterCrop(cropCoords, cropData.cropLayer);
@@ -2544,31 +2552,31 @@ export default class ImageEditor {
      * @param {HTMLCanvasElement} tempCanvas - Временный canvas с кропнутым изображением
      * @param {Object} cropCoords - Координаты кропа
      */
-    _updateCanvasWithCroppedImage(tempCanvas, cropCoords) {
+    async _updateCanvasWithCroppedImage(tempCanvas, cropCoords) {
         const { validWidth, validHeight } = cropCoords;
 
-        // Сохраняем состояние для отмены
         if (this.historyManager) {
             this.historyManager.beginAtomicOperation('Apply crop');
         }
 
-        // Обновляем основной canvas
         this.canvas.width = validWidth;
         this.canvas.height = validHeight;
         this.canvas.style.width = `${validWidth / this.DPR}px`;
         this.canvas.style.height = `${validHeight / this.DPR}px`;
 
-        // Обновляем размеры selectionOverlay
         this.selectionOverlay.style.width = `${this.canvas.clientWidth}px`;
         this.selectionOverlay.style.height = `${this.canvas.clientHeight}px`;
 
-        // Очищаем и рисуем обрезанное изображение
         this.context.clearRect(0, 0, this.canvas.width, this.canvas.height);
         this.context.drawImage(tempCanvas, 0, 0);
 
-        // Обновляем исходное изображение
-        this.originalImage = new Image();
-        this.originalImage.src = tempCanvas.toDataURL();
+        const dataURL = tempCanvas.toDataURL();
+        this.originalImage = await new Promise((resolve, reject) => {
+            const img = new Image();
+            img.onload = () => resolve(img);
+            img.onerror = reject;
+            img.src = dataURL;
+        });
         this.image = this.originalImage;
 
         // Сохраняем координаты кропа для последующего пересчёта слоёв
@@ -2586,40 +2594,24 @@ export default class ImageEditor {
      * @param {Object} cropLayer - Crop-слой для удаления
      */
     _updateLayersAfterCrop(cropCoords, cropLayer) {
-        const { currentCanvasScaleX, currentCanvasScaleY } = cropCoords;
-        const cropRect = { x: cropCoords.validX, y: cropCoords.validY, width: cropCoords.validWidth, height: cropCoords.validHeight };
-
         if (!this.layerManager.layers || !Array.isArray(this.layerManager.layers)) return;
 
-        this.layerManager.layers.forEach(layer => {
-            // Пропускаем crop слой при пересчете остальных слоёв
-            if (layer.id === cropLayer.id) return;
-
-            if (layer.rect) {
-                this._updateRectLayerCoordinates(layer, cropRect, currentCanvasScaleX, currentCanvasScaleY);
-            }
-
-            if (layer.points) {
-                this._updateLineLayerCoordinates(layer, cropRect, currentCanvasScaleX, currentCanvasScaleY);
-            }
-        });
-
-        // Удаляем crop-слой
-        const cropIndex = this.layerManager.layers.findIndex(l => l.id === cropLayer.id);
-        if (cropIndex !== -1) {
-            this.layerManager.layers.splice(cropIndex, 1);
-            if (this.layerManager.activeLayerIndex === cropIndex) {
-                this.layerManager.activeLayerIndex = -1;
-            } else if (this.layerManager.activeLayerIndex > cropIndex) {
-                this.layerManager.activeLayerIndex--;
-            }
-        }
+        // Удаляем все слои кроме base и crop — аннотации уже запечены в новое изображение
+        this.layerManager.layers = this.layerManager.layers.filter(l => l.type === 'base' || l.id === cropLayer.id);
 
         // Обновляем базовый слой
         if (this.layerManager.layers.length > 0 && this.layerManager.layers[0].type === 'base') {
             const baseLayer = this.layerManager.layers[0];
             baseLayer.imageData = this.context.getImageData(0, 0, this.canvas.width, this.canvas.height);
         }
+
+        // Удаляем crop-слой
+        const cropIndex = this.layerManager.layers.findIndex(l => l.id === cropLayer.id);
+        if (cropIndex !== -1) {
+            this.layerManager.layers.splice(cropIndex, 1);
+        }
+
+        this.layerManager.activeLayerIndex = -1;
     }
 
     /**
