@@ -11,21 +11,16 @@ import LayerManager from './LayerManager.js';
 import HistoryManager from './HistoryManager.js';
 import Helper from './Helper.js';
 
-import * as geometry from './utils/geometry.js';
-import { wrapTextInRect, formatFileSize } from './utils/canvas.js';
+import { wrapTextInRect } from './utils/canvas.js';
 
 import { validateCropData, calculateCropCoordinates } from './crop/coordinates.js';
 import { createCroppedCanvas } from './crop/canvas.js';
-import {
-  applyLayersToCroppedCanvas,
-  applyRectLayerToCroppedCanvas,
-  applyLineLayerToCroppedCanvas
-} from './crop/layerApplier.js';
-import {
-  updateLayersAfterCrop,
-  updateRectLayerCoordinates,
-  updateLineLayerCoordinates
-} from './crop/layerUpdater.js';
+import { applyLayersToCroppedCanvas } from './crop/layerApplier.js';
+import { updateLayersAfterCrop } from './crop/layerUpdater.js';
+
+import CanvasManager from './core/CanvasManager.js';
+import SelectionRenderer from './core/SelectionRenderer.js';
+import EventManager from './core/EventManager.js';
 
 export default class ImageEditor {
   constructor() {
@@ -38,19 +33,25 @@ export default class ImageEditor {
     this.initializeConstants();
     this.initializeState();
 
+    // Создание подмодулей ядра
+    this.canvasManager = new CanvasManager(this);
+    this.selectionRenderer = new SelectionRenderer(this);
+    this.eventManager = new EventManager(this);
+
+    // Обработчики для кнопок
     this.boundUndoClick = () => {
       if (this.historyManager) this.historyManager.undo();
     };
+    this.boundRedoClick = () => {
+      if (this.historyManager) this.historyManager.redo();
+    };
 
-    // Обработчики для кнопок
+    // Обработчики для загрузки/сохранения
     this.boundFileClick = () => this.fileInput.click();
     this.boundFileChange = (e) => this.loadImage(e.target.files[0]);
     this.boundSaveClick = async () => {
       await this.applyCrop();
       this.saveImage();
-    };
-    this.boundRedoClick = () => {
-      if (this.historyManager) this.historyManager.redo();
     };
 
     // Обработчики для инструментов
@@ -61,35 +62,21 @@ export default class ImageEditor {
     this.boundLineClick = () => this.setActiveTool(this.tools.line);
     this.boundTextClick = () => this.setActiveTool(this.tools.text);
 
-    // Обработчики для событий окна и документа
-    this.boundResize = () => this.updateCanvasDisplay();
-    this.boundPaste = (e) => this.handlePaste(e);
-    this.boundLayersListClick = (e) => {
-      const layerItem = e.target.closest('.layer-item');
-      if (layerItem) {
-        this.setActiveLayer(layerItem.dataset.layerId);
-      }
-    };
-    this.boundKeyDown = (e) => {
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        this.resetSelection();
-        return;
-      }
-      if (e.key === 'Delete' && this.layerManager.activeLayer) {
-        e.preventDefault();
-        this.deleteActiveLayer();
-      }
-    };
-
-    // Обработчики для мыши
-    this.boundMouseMove = (e) => this.onMouseMove(e);
-    this.boundMouseUp = (e) => this.onMouseUp(e);
-    this.boundOverlayMouseDown = (e) => this.onOverlayMouseDown(e);
-    this.boundOverlayHover = (e) => this.onOverlayHover(e);
-
     // Инициализация
     this.init();
+  }
+
+  /**
+     * Прокси для dragState, хранящегося в EventManager
+     */
+  get dragState() {
+    return this.eventManager?.dragState ?? null;
+  }
+
+  set dragState(value) {
+    if (this.eventManager) {
+      this.eventManager.dragState = value;
+    }
   }
 
   /**
@@ -139,9 +126,6 @@ export default class ImageEditor {
       maxHistory: 50,
       deduplicate: true,
     });
-    // this.history = [];
-    // this.historyPosition = -1;
-    // this.MAX_HISTORY_SIZE = 50; // Максимальное количество состояний в истории
   }
 
   /**
@@ -256,29 +240,13 @@ export default class ImageEditor {
      * добавляет обработчики событий и обновляет кнопки тулбара
      */
   init() {
-    this.setupCanvas();
+    this.canvasManager.setupCanvas();
     this.layerManager.init(); // Инициализация менеджера слоев
     this.initEventListeners();
     this.updateToolbarButtons();
     this.loadVersion().catch(err => {
       console.error('Failed to load version:', err);
     });
-  }
-
-  /**
-     * Устанавливает начальные параметры холста
-     * Задает размеры холста и заливает его белым цветом
-     */
-  setupCanvas() {
-    // Установка начального размера холста
-    this.canvas.width = 800;
-    this.canvas.height = 600;
-    this.context.fillStyle = '#fff';
-    this.context.fillRect(0, 0, this.canvas.width, this.canvas.height);
-    if (this.historyManager) {
-      this.historyManager.clear();
-      this.historyManager.commit('Initial canvas');
-    }
   }
 
   /**
@@ -312,7 +280,7 @@ export default class ImageEditor {
       // ✅ Сначала полностью сбрасываем overlay
       this.selectionOverlay.style.cssText = '';
       this.selectionOverlay.className = '';
-            
+
       // ✅ Очищаем все дочерние элементы от предыдущего инструмента
       while (this.selectionOverlay.firstChild) {
         this.selectionOverlay.removeChild(this.selectionOverlay.firstChild);
@@ -342,9 +310,6 @@ export default class ImageEditor {
           console.error('Error activating tool', error);
         }
       }
-      // pointerEvents должен быть 'auto' всегда, когда есть активный инструмент
-      // или когда инструмент был деактивирован (чтобы другие обработчики работали)
-      // this.selectionOverlay.style.pointerEvents = 'auto';
     }
 
     // 4. Обновляем UI настроек
@@ -372,7 +337,7 @@ export default class ImageEditor {
         button.classList.toggle('active', toolType === activeToolType);
       }
     });
-        
+
     // Обновление состояния кнопок undo/redo
     const undoBtn = document.getElementById('undoBtn');
     const redoBtn = document.getElementById('redoBtn');
@@ -414,22 +379,8 @@ export default class ImageEditor {
     document.getElementById('lineBtn').addEventListener('click', this.boundLineClick);
     document.getElementById('textBtn').addEventListener('click', this.boundTextClick);
 
-    // Обработка изменения размера окна
-    window.addEventListener('resize', this.boundResize);
-
-    // Вставка изображения из буфера обмена
-    document.addEventListener('paste', this.boundPaste);
-
-    // Удаление слоя по Delete
-    document.addEventListener('keydown', this.boundKeyDown);
-
-    // Обработчики для мыши
-    document.addEventListener('mousemove', this.boundMouseMove);
-    document.addEventListener('mouseup', this.boundMouseUp);
-
-    // Привязка обработчиков для selectionOverlay
-    this.selectionOverlay.addEventListener('mousedown', this.boundOverlayMouseDown);
-    this.selectionOverlay.addEventListener('mousemove', this.boundOverlayHover);
+    // Обработчики мыши, клавиатуры, оверлея, resize, paste
+    this.eventManager.init();
   }
 
   /**
@@ -560,9 +511,6 @@ export default class ImageEditor {
           this.historyManager.commit('Load image');
         }
 
-        // Инициализация слоев
-        // this.initLayers();
-
       };
       img.src = e.target.result;
     };
@@ -662,10 +610,11 @@ export default class ImageEditor {
   }
 
   /**
-     * Обновляет отображение холста при изменении размера окна
+     * Основной метод перерисовки (прокси на CanvasManager)
+     * @param {Object|null} dirtyRegion - { x, y, width, height } для частичного рендера.
      */
-  updateCanvasDisplay() {
-    // Можно добавить логику для адаптации отображения холста под размер окна
+  render(dirtyRegion = null) {
+    this.canvasManager.render(dirtyRegion);
   }
 
   /**
@@ -805,851 +754,6 @@ export default class ImageEditor {
   }
 
   /**
-     * Основной метод перерисовки
-     * @param {Object|null} dirtyRegion - { x, y, width, height } для частичного рендера.
-     */
-  render(dirtyRegion = null) {
-    if (!this.image || !this.context || !this.canvas) {
-      return;
-    }
-
-    try {
-      if (dirtyRegion) {
-        this.context.save();
-        this.context.beginPath();
-        this.context.rect(
-          dirtyRegion.x,
-          dirtyRegion.y,
-          dirtyRegion.width,
-          dirtyRegion.height
-        );
-        this.context.clip();
-      } else {
-        this.context.clearRect(0, 0, this.canvas.width, this.canvas.height);
-      }
-
-      this.renderBaseImage(dirtyRegion);
-      this.renderRasterLayers(dirtyRegion);
-      this.renderCropOverlay(dirtyRegion);
-      this.renderSelectionHandles(dirtyRegion);
-    } catch (error) {
-      console.error('Error during rendering', error);
-    } finally {
-      if (dirtyRegion) {
-        try {
-          this.context.restore();
-        } catch {
-          // ignore restore errors
-        }
-      }
-    }
-  }
-
-  /**
-     * Рисует базовое изображение с учетом dirtyRegion.
-     * @param {Object|null} dirtyRegion
-     */
-  renderBaseImage(dirtyRegion = null) {
-    if (!this.image || !this.context || !this.canvas) return;
-
-    if (dirtyRegion) {
-      this.context.drawImage(
-        this.image,
-        dirtyRegion.x,
-        dirtyRegion.y,
-        dirtyRegion.width,
-        dirtyRegion.height,
-        dirtyRegion.x,
-        dirtyRegion.y,
-        dirtyRegion.width,
-        dirtyRegion.height
-      );
-    } else {
-      this.context.drawImage(
-        this.image,
-        0,
-        0,
-        this.canvas.width,
-        this.canvas.height
-      );
-    }
-  }
-
-  /**
-     * Рендерит растер‑слои (blur, highlight, line, text).
-     * @param {Object|null} dirtyRegion
-     */
-  renderRasterLayers(dirtyRegion = null) {
-    if (!this.layerManager || !Array.isArray(this.layerManager.layers)) return;
-    if (!this.context || !this.canvas) return;
-
-    this.layerManager.layers.forEach(layer => {
-      if (!layer || layer.type === 'crop' || layer.type === 'base') return;
-      if (layer.visible === false) return;
-
-      const tool = this.tools[layer.type];
-      if (!tool?.renderLayer) return;
-
-      // Простейшая оптимизация по dirtyRegion — скипаем слой, если он точно вне области.
-      if (dirtyRegion) {
-        const bounds = tool.getBounds?.(layer);
-        if (bounds) {
-          const intersects =
-                        dirtyRegion.x < bounds.x + bounds.width &&
-                        dirtyRegion.x + dirtyRegion.width > bounds.x &&
-                        dirtyRegion.y < bounds.y + bounds.height &&
-                        dirtyRegion.y + dirtyRegion.height > bounds.y;
-          if (!intersects) {
-            return;
-          }
-        }
-      }
-
-      this.context.save();
-      tool.renderLayer(this.context, layer, {
-        image: this.image,
-        lineWidth: this.CONSTANTS?.LINE_WIDTH,
-      });
-      this.context.restore();
-    });
-  }
-
-  /**
-     * Рисует затемнение и рамку crop‑области.
-     * @param {Object|null} dirtyRegion
-     */
-  renderCropOverlay(dirtyRegion = null) {
-    if (!this.layerManager || !this.context || !this.canvas) return;
-    const cropLayer = this.layerManager.layers?.find(l => l.type === 'crop');
-    if (!cropLayer || !cropLayer.rect) return;
-
-    const r = cropLayer.rect;
-
-    // Если dirtyRegion не пересекается с cropRect и областями затемнения — можно скипнуть.
-    if (dirtyRegion) {
-      const intersects =
-                dirtyRegion.x < this.canvas.width &&
-                dirtyRegion.x + dirtyRegion.width > 0 &&
-                dirtyRegion.y < this.canvas.height &&
-                dirtyRegion.y + dirtyRegion.height > 0;
-      if (!intersects) {
-        return;
-      }
-    }
-
-    this.context.save();
-    this.context.fillStyle = 'rgba(0, 0, 0, 0.5)';
-
-    // верх
-    this.context.fillRect(0, 0, this.canvas.width, r.y);
-    // низ
-    this.context.fillRect(
-      0,
-      r.y + r.height,
-      this.canvas.width,
-      this.canvas.height - r.y - r.height
-    );
-    // слева
-    this.context.fillRect(0, r.y, r.x, r.height);
-    // справа
-    this.context.fillRect(
-      r.x + r.width,
-      r.y,
-      this.canvas.width - r.x - r.width,
-      r.height
-    );
-
-    this.context.restore();
-
-    // рамка и подпись размеров
-    this.context.save();
-    this.context.strokeStyle = '#ffffff';
-    this.context.lineWidth = 2;
-    this.context.strokeRect(r.x, r.y, r.width, r.height);
-
-    this.context.fillStyle = '#ffffff';
-    this.context.font = '14px Arial';
-    const wText = Helper.formatSize(r.width);
-    const hText = Helper.formatSize(r.height);
-    this.context.fillText(
-      `${wText} × ${hText}`,
-      r.x - 10,
-      r.y - 10
-    );
-    this.context.restore();
-  }
-
-  /**
-     * Рисует хэндлы и точки выделения активного слоя.
-     * @param {Object|null} dirtyRegion
-     */
-  renderSelectionHandles(dirtyRegion = null) {
-    if (!this.layerManager || !this.context) return;
-    const activeLayer = this.layerManager.activeLayer;
-    if (!activeLayer) return;
-
-    // Простая проверка: если есть dirtyRegion и есть rect — не рисуем вне dirtyRegion.
-    if (dirtyRegion && activeLayer.rect) {
-      const r = activeLayer.rect;
-      const intersects =
-                dirtyRegion.x < r.x + r.width &&
-                dirtyRegion.x + dirtyRegion.width > r.x &&
-                dirtyRegion.y < r.y + r.height &&
-                dirtyRegion.y + dirtyRegion.height > r.y;
-      if (!intersects) {
-        return;
-      }
-    }
-
-    if (activeLayer.rect) {
-      this.drawHandles(this.context, activeLayer.rect);
-    }
-
-    if (activeLayer.type === 'line' && activeLayer.points) {
-      this.drawLinePoints(this.context, activeLayer.points);
-    }
-  }
-
-  /**
-     * Рисует ручки управления (handles) для прямоугольника, используя контекст 2D.
-     * Каждая ручка представляет собой квадратный элемент с указанными координатами и направлением.
-     * @param {CanvasRenderingContext2D} ctx - Контекст 2D канваса.
-     * @param {Object} rect - Объект с координатами прямоугольника: { x, y, width, height }.
-     * @returns {void} - Функция не возвращает значения.
-     * @throws {Error} - Бросает ошибку, если ctx или rect равны null.
-     */
-  drawHandles(ctx, rect) {
-    if (!ctx || !rect) return;
-    try {
-      ctx.save();
-      ctx.fillStyle = '#0096ff';
-      const size = 6;
-
-      const handles = [
-        { x: rect.x, y: rect.y, dx: -1, dy: -1 },           // nw
-        { x: rect.x + rect.width / 2, y: rect.y, dx: 0, dy: -1 }, // n
-        { x: rect.x + rect.width, y: rect.y, dx: 1, dy: -1 },     // ne
-        { x: rect.x, y: rect.y + rect.height / 2, dx: -1, dy: 0 }, // w
-        { x: rect.x + rect.width, y: rect.y + rect.height / 2, dx: 1, dy: 0 }, // e
-        { x: rect.x, y: rect.y + rect.height, dx: -1, dy: 1 },    // sw
-        { x: rect.x + rect.width / 2, y: rect.y + rect.height, dx: 0, dy: 1 }, // s
-        { x: rect.x + rect.width, y: rect.y + rect.height, dx: 1, dy: 1 }      // se
-      ];
-
-      handles.forEach(h => {
-        const cx = h.x + h.dx * 4;
-        const cy = h.y + h.dy * 4;
-        ctx.fillRect(cx - size / 2, cy - size / 2, size, size);
-      });
-      ctx.restore();
-    } catch (error) {
-      console.error('Error drawing handles:', error);
-      ctx.restore(); // Ensure context is restored even if drawing fails
-    }
-  }
-
-  /**
-     * Рисует точки на линии с указанными координатами.
-     * @param {CanvasRenderingContext2D} ctx - Контекст 2D для рисования.
-     * @param {Object} points - Объект с координатами точек: {x1, y1, x2, y2}.
-     * @returns {void} - Функция не возвращает значение.
-     * @throws {Error} - Если ctx или points равны null/undefined.
-     */
-  drawLinePoints(ctx, points) {
-    if (!ctx || !points) return;
-    try {
-      ctx.save();
-      ctx.fillStyle = '#0096ff';
-      const r = 5;
-      ctx.beginPath();
-      ctx.arc(points.x1, points.y1, r, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.beginPath();
-      ctx.arc(points.x2, points.y2, r, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.restore();
-    } catch (error) {
-      console.error('Error drawing line points:', error);
-      ctx.restore(); // Ensure context is restored even if drawing fails
-    }
-  }
-
-  /**
-     * Вычисляет расстояние от точки до отрезка
-     * @param {number} px - X координата точки
-     * @param {number} py - Y координата точки
-     * @param {number} x1 - X координата начала отрезка
-     * @param {number} y1 - Y координата начала отрезка
-     * @param {number} x2 - X координата конца отрезка
-     * @param {number} y2 - Y координата конца отрезка
-     * @returns {number} - Расстояние от точки до отрезка
-     */
-  pointToSegmentDistance(px, py, x1, y1, x2, y2) {
-    return geometry.pointToSegmentDistance(px, py, x1, y1, x2, y2);
-  }
-
-  /**
-     * Обработчик события нажатия мыши на оверлее
-     * @param {MouseEvent} e - Событие мыши
-     */
-  onOverlayMouseDown(e) {
-    // 1. Общая логика (хит-тест слоёв, создание/выбор, dragState)
-    try {
-      const coords = this.getCanvasCoords(e);
-      let hit = null;
-
-      // 1. Поиск попадания в слой (делегируем инструментам)
-      for (const l of this.layerManager.layers) {
-        const tool = this.tools[l.type];
-        if (tool?.hitTest?.(coords, l)) {
-          hit = l;
-          break;
-        }
-      }
-
-      // 2. Двойной клик по текстовому слою → inline-редактирование через textarea
-      if (e.detail === 2 && hit?.type === 'text') {
-        e.preventDefault();
-        this.activeLayer = hit;
-        this.updateLayersPanel();
-                
-        // Переключаемся на инструмент Текст и запускаем редактирование
-        this.switchToLayerTool('text');
-                
-        const textTool = this.tools.text;
-        if (textTool) {
-          textTool.currentLayer = hit;
-          textTool.editText(hit);
-        }
-        return;
-      }
-
-      // 3. Проверка попадания в ручки (только для прямоугольных слоёв)
-      let handleHit = null;
-      if (hit?.rect) {
-        for (const h of this.HANDLES) {
-          const [dx, dy] = {
-            nw: [-1, -1], n: [0, -1], ne: [1, -1],
-            w: [-1, 0], e: [1, 0],
-            sw: [-1, 1], s: [0, 1], se: [1, 1]
-          }[h];
-
-          const centerX = hit.rect.x + hit.rect.width * (dx + 1) / 2;
-          const centerY = hit.rect.y + hit.rect.height * (dy + 1) / 2;
-
-          const hitSize = 16;
-          const hitX = centerX - hitSize / 2;
-          const hitY = centerY - hitSize / 2;
-
-          if (coords.x >= hitX && coords.x <= hitX + hitSize &&
-                        coords.y >= hitY && coords.y <= hitY + hitSize) {
-            handleHit = h;
-            break;
-          }
-        }
-      }
-
-      // 4. Ручки → resize
-      if (handleHit) {
-        this.activeLayer = hit;
-        this.dragState = {
-          start: coords,
-          layer: hit,
-          handle: handleHit,
-          orig: { ...hit.rect }
-        };
-        this.selectionOverlay.className = `resize-${handleHit}`;
-        this.updateLayersPanel();
-
-        if (this.historyManager) {
-          this.historyManager.beginAtomicOperation('Resize layer');
-        }
-        return;
-      }
-
-      // 5. Точки линии
-      if (hit?.type === 'line') {
-        const d1 = Math.hypot(coords.x - hit.points.x1, coords.y - hit.points.y1);
-        const d2 = Math.hypot(coords.x - hit.points.x2, coords.y - hit.points.y2);
-        let ptHandle = null;
-        if (d1 < 12) ptHandle = 'x1';
-        else if (d2 < 12) ptHandle = 'x2';
-
-        if (ptHandle) {
-          this.activeLayer = hit;
-          this.dragState = {
-            start: coords,
-            layer: hit,
-            handle: ptHandle,
-            orig: { ...hit.points }
-          };
-          this.selectionOverlay.style.cursor = 'move';
-          this.updateLayersPanel();
-
-          if (this.historyManager) {
-            this.historyManager.beginAtomicOperation('Resize layer');
-          }
-          return;
-        }
-      }
-
-      // 6. Попадание в слой → активация или move
-      if (hit) {
-        // Если слой уже активен ИЛИ это текстовый слой с активным инструментом Текст — начинаем перетаскивание
-        const isAlreadyActive = this.activeLayer === hit;
-        const isTextLayerWithTextTool = hit.type === 'text' && this.activeTool?.name === 'text';
-                
-        // Для текстового слоя с активным инструментом Текст — всегда начинаем перемещение (не редактирование)
-        // Редактирование запускается двойным кликом
-        if (isAlreadyActive || isTextLayerWithTextTool) {
-          // Начинаем перетаскивание
-          const isRect = !!hit.rect;
-          this.dragState = {
-            start: coords,
-            layer: hit,
-            handle: 'move',
-            orig: isRect ? { ...hit.rect } : { ...hit.points }
-          };
-          this.selectionOverlay.className = 'move';
-          this.selectionOverlay.style.cursor = 'move';
-
-          if (this.historyManager) {
-            this.historyManager.beginAtomicOperation('Resize layer');
-          }
-        } else {
-          // Просто активируем слой
-          this.activeLayer = hit;
-          this.updateLayersPanel();
-          this.render();
-
-          // Переключаем инструмент на соответствующий типу слоя и обновляем параметры
-          this.switchToLayerTool(hit.type);
-
-          // Обновляем currentLayer у активного инструмента
-          const activeTool = this.activeTool;
-          if (activeTool) {
-            // Устанавливаем currentLayer только если тип слоя совпадает с типом инструмента
-            if (activeTool.name === hit.type) {
-              activeTool.currentLayer = hit;
-              // Обновляем настройки инструмента из параметров слоя
-              if (activeTool.settings && hit.params) {
-                Object.assign(activeTool.settings, hit.params);
-                // Обновляем UI настроек с новыми значениями
-                if (typeof activeTool.updateSettingsUI === 'function') {
-                  activeTool.updateSettingsUI();
-                }
-              }
-            } else {
-              activeTool.currentLayer = null;
-            }
-            // Обновляем overlay активного инструмента
-            activeTool.updateOverlay();
-          }
-        }
-        return;
-      }
-
-      // 7. Создание нового слоя — только если активен инструмент и он поддерживает прямоугольники/линии
-      if (this.activeTool?.supportsCreation) {
-        const type = this.activeTool.name;
-        let initialOptions = {};
-
-        switch (type) {
-          case 'crop':
-            // Не даём создать второй crop-слой
-            if (this.layerManager.layers.some(l => l.type === 'crop')) return;
-
-            initialOptions = {
-              type: 'crop',
-              rect: { x: coords.x, y: coords.y, width: 0, height: 0 },
-              params: {}
-            };
-            break;
-
-          case 'blur':
-            initialOptions = {
-              type: 'blur',
-              rect: { x: coords.x, y: coords.y, width: 0, height: 0 },
-              params: { radius: this.tools.blur.settings?.radius ?? 5 }
-            };
-            break;
-
-          case 'rectangle':
-            initialOptions = {
-              type: 'rectangle',
-              rect: { x: coords.x, y: coords.y, width: 0, height: 0 },
-              params: {
-                color: this.tools.rectangle?.settings?.color ?? '#ff0000',
-                thickness: this.tools.rectangle?.settings?.thickness ?? 2
-              }
-            };
-            break;
-
-          case 'highlighter':
-            initialOptions = {
-              type: 'highlighter',
-              rect: { x: coords.x, y: coords.y, width: 0, height: 0 },
-              params: {
-                color: this.tools.highlighter?.settings?.color ?? '#FFA500',
-                opacity: this.tools.highlighter?.settings?.opacity ?? 0.3
-              }
-            };
-            break;
-
-          case 'line':
-            initialOptions = {
-              type: 'line',
-              points: {
-                x1: coords.x, y1: coords.y,
-                x2: coords.x, y2: coords.y
-              },
-              params: {
-                color: this.tools.line.settings?.color ?? '#ff0000',
-                thickness: this.tools.line.settings?.thickness ?? 2
-              }
-            };
-            break;
-
-          case 'text':
-            initialOptions = {
-              type: 'text',
-              rect: {
-                x: coords.x,
-                y: coords.y,
-                width: 200,
-                height: (this.tools.text.settings?.fontSize ?? 16) * 1.5
-              },
-              params: {
-                text: '',
-                color: this.tools.text.settings?.color ?? '#000000',
-                fontSize: this.tools.text.settings?.fontSize ?? 16
-              }
-            };
-            break;
-
-          default:
-            return;
-        }
-
-        const newLayer = this.layerManager.createLayerObject(initialOptions.type, initialOptions);
-        const created = this.addLayer(newLayer);
-
-        // Синхронизируем currentLayer у инструментов после создания слоя
-        if (this.activeTool) {
-          if (type === 'crop' && this.activeTool.name === 'crop') {
-            this.activeTool.currentLayer = created;
-          } else if (type === 'text' && this.activeTool.name === 'text') {
-            this.activeTool.currentLayer = created;
-          } else if (type === 'blur' && this.activeTool.name === 'blur') {
-            this.activeTool.currentLayer = created;
-          } else if (type === 'rectangle' && this.activeTool.name === 'rectangle') {
-            this.activeTool.currentLayer = created;
-          } else if (type === 'line' && this.activeTool.name === 'line') {
-            this.activeTool.currentLayer = created;
-          }
-        }
-
-        // Для всех инструментов используем dragState
-        this.dragState = {
-          start: coords,
-          layer: created,
-          handle: type === 'line' ? 'x2' : 'create',
-          orig: type === 'line'
-            ? { ...created.points }
-            : { ...created.rect }
-        };
-
-        if (this.historyManager) {
-          this.historyManager.beginAtomicOperation('Resize layer');
-        }
-
-        return;
-      }
-
-    } catch (error) {
-      console.error('Error in onOverlayMouseDown:', error);
-    }
-
-    // 2. Дать инструменту возможность дополнительно обработать
-    try {
-      if (this.activeTool && typeof this.activeTool.handleMouseDown === 'function') {
-        this.activeTool.handleMouseDown(e);
-      }
-    } catch (error) {
-      console.error('Error in tool.handleMouseDown', error);
-    }
-  }
-
-  /**
-     * Обработчик события движения мыши
-     * @param {MouseEvent} e - Событие мыши
-     */
-  onMouseMove(e) {
-    // Сохраняем данные для отложенной отрисовки через requestAnimationFrame
-    // Только если есть активный dragState
-    if (this.dragState) {
-      this._pendingDragState = { e, dragState: { ...this.dragState } };
-
-      // Отменяем предыдущий кадр, если он ещё не выполнен
-      if (this._rafId) {
-        cancelAnimationFrame(this._rafId);
-      }
-
-      // Запрашиваем следующий кадр анимации
-      this._rafId = requestAnimationFrame(() => {
-        this._processDragFrame();
-      });
-    }
-
-    // Вызываем handleMouseMove у инструмента без троттлинга (для UI/превью)
-    try {
-      if (this.activeTool && typeof this.activeTool.handleMouseMove === 'function') {
-        this.activeTool.handleMouseMove(e);
-      }
-    } catch (error) {
-      console.error('Error in tool.handleMouseMove', error);
-    }
-  }
-
-  /**
-     * Обрабатывает один кадр перетаскивания/изменения размера
-     * Вызывается внутри requestAnimationFrame
-     */
-  _processDragFrame() {
-    this._rafId = null;
-    const pending = this._pendingDragState;
-    this._pendingDragState = null;
-
-    if (!pending || !pending.dragState) return;
-
-    const { e, dragState } = pending;
-
-    try {
-      if (!dragState || !dragState.layer || !dragState.start || !dragState.orig) {
-        console.warn('Invalid dragState, skipping frame');
-        return;
-      }
-
-      // Проверяем, что e и canvas существуют
-      if (!e || !this.canvas) {
-        console.error('Invalid event or canvas element');
-        return;
-      }
-
-      const coords = this.getCanvasCoords(e);
-      const { handle, layer, start, orig } = dragState;
-
-      if (handle === 'create') {
-        const x1 = Math.min(start.x, coords.x);
-        const y1 = Math.min(start.y, coords.y);
-        const w = Math.abs(coords.x - start.x);
-        const h = Math.abs(coords.y - start.y);
-
-        layer.rect.x = Math.max(0, x1);
-        layer.rect.y = Math.max(0, y1);
-        layer.rect.width = Math.max(10, Math.min(this.canvas.width - layer.rect.x, w));
-        layer.rect.height = Math.max(10, Math.min(this.canvas.height - layer.rect.y, h));
-      }
-      else if (handle === 'move') {
-        const dx = coords.x - start.x;
-        const dy = coords.y - start.y;
-        if (layer.rect) {
-          if (!orig || typeof orig.width === 'undefined' || typeof orig.height === 'undefined') {
-            console.error('Invalid orig dimensions for rectangle movement');
-            return;
-          }
-          layer.rect.x = Math.max(0, Math.min(this.canvas.width - orig.width, orig.x + dx));
-          layer.rect.y = Math.max(0, Math.min(this.canvas.height - orig.height, orig.y + dy));
-        } else if (layer.points) {
-          if (!orig || typeof orig.x1 === 'undefined' || typeof orig.y1 === 'undefined' ||
-                        typeof orig.x2 === 'undefined' || typeof orig.y2 === 'undefined') {
-            console.error('Invalid orig coordinates for point movement');
-            return;
-          }
-          layer.points.x1 = Math.max(0, Math.min(this.canvas.width, orig.x1 + dx));
-          layer.points.y1 = Math.max(0, Math.min(this.canvas.height, orig.y1 + dy));
-          layer.points.x2 = Math.max(0, Math.min(this.canvas.width, orig.x2 + dx));
-          layer.points.y2 = Math.max(0, Math.min(this.canvas.height, orig.y2 + dy));
-        }
-      }
-      else if (layer.rect) {
-        this.updateRectFromHandle(handle, layer, start, coords.x, coords.y);
-      }
-      else if (layer.points && (handle === 'x1' || handle === 'x2')) {
-        layer.points[handle === 'x1' ? 'x1' : 'x2'] = Math.max(0, Math.min(this.canvas.width, coords.x));
-        layer.points[handle === 'x1' ? 'y1' : 'y2'] = Math.max(0, Math.min(this.canvas.height, coords.y));
-      }
-
-      this.render();
-            
-      // Обновляем overlay активного инструмента для отображения превью
-      if (this.activeTool && typeof this.activeTool.updateOverlay === 'function') {
-        this.activeTool.updateOverlay();
-      }
-    } catch (error) {
-      console.error('Error in onMouseMove:', error);
-    }
-  }
-
-  /**
-     * Обработчик события отпускания мыши
-     * @param {MouseEvent} e - Событие мыши
-     */
-  onMouseUp(e) {
-    try {
-      // Сначала вызываем handleMouseUp у инструмента, пока dragState еще не сброшен
-      try {
-        if (this.activeTool && typeof this.activeTool.handleMouseUp === 'function') {
-          this.activeTool.handleMouseUp(e);
-        }
-      } catch (error) {
-        console.error('Error in tool.handleMouseUp', error);
-      }
-
-      // Затем сбрасываем dragState
-      if (this.dragState) {
-        if (this.historyManager) {
-          this.historyManager.endAtomicOperation();
-        }
-        this.dragState = null;
-      }
-
-      this.selectionOverlay.className = '';
-      this.selectionOverlay.style.cursor = 'default';
-
-      this.render();
-      this.updateLayersPanel();
-            
-      // Обновляем overlay активного инструмента
-      if (this.activeTool && typeof this.activeTool.updateOverlay === 'function') {
-        this.activeTool.updateOverlay();
-      }
-    } catch (error) {
-      console.error('Error in onMouseUp:', error);
-    }
-  }
-
-  /**
-     * Обработчик события наведения мыши на оверлей
-     * @param {MouseEvent} e - Событие мыши
-     */
-  onOverlayHover(e) {
-    try {
-      if (this.dragState) return; // не мешаем при drag
-
-      // Проверяем, что e и canvas существуют
-      if (!e || !this.canvas || !this.layerManager || !this.layerManager.layers) {
-        console.error('Invalid event or canvas element or layer manager');
-        return;
-      }
-
-      const coords = this.getCanvasCoords(e);
-      let cls = '';
-
-      // Проверяем, что HANDLES и selectionOverlay существуют
-      if (!this.HANDLES || !this.selectionOverlay) {
-        console.error('HANDLES or selectionOverlay not initialized');
-        return;
-      }
-
-      this.layerManager.layers.forEach((l) => {
-        if (!l.rect) return;
-
-        // Проверяем, что l.rect имеет правильные свойства
-        if (typeof l.rect.x === 'undefined' || typeof l.rect.y === 'undefined' ||
-                    typeof l.rect.width === 'undefined' || typeof l.rect.height === 'undefined') {
-          console.warn('Invalid rect properties for layer', l);
-          return;
-        }
-
-        this.HANDLES.forEach((h) => {
-          const [dx, dy] = {
-            nw: [-1, -1], n: [0, -1], ne: [1, -1],
-            w: [-1, 0], e: [1, 0],
-            sw: [-1, 1], s: [0, 1], se: [1, 1]
-          }[h];
-
-          const centerX = l.rect.x + l.rect.width * (dx + 1) / 2;
-          const centerY = l.rect.y + l.rect.height * (dy + 1) / 2;
-
-          // Область попадания в ручку
-          const hitSize = 16; // HANDLE_SIZE
-          const hx = centerX - hitSize / 2;
-          const hy = centerY - hitSize / 2;
-
-          if (coords.x >= hx && coords.x <= hx + hitSize &&
-                        coords.y >= hy && coords.y <= hy + hitSize) {
-            cls = `resize-${h}`;
-            return true;
-          }
-        });
-        if (cls) return;
-      });
-
-      this.selectionOverlay.className = cls;
-      this.selectionOverlay.style.cursor = cls ? 'pointer' : 'default';
-    } catch (error) {
-      console.error('Error in onOverlayHover:', error);
-    }
-  }
-
-  /**
-     * Обновляет прямоугольник слоя на основе перемещения ручки
-     * @param {string} handle - Тип ручки ('nw', 'n', 'ne', и т.д.)
-     * @param {Object} layer - Слой, который обновляется
-     * @param {Object} start - Начальные координаты
-     * @param {number} x - Координата x
-     * @param {number} y - Координата y
-     */
-  updateRectFromHandle(handle, layer, start, x, y) {
-    try {
-      const orig = this.dragState.orig;
-      const dx = x - start.x;
-      const dy = y - start.y;
-      const MIN = 10;
-
-      let nx = orig.x, ny = orig.y, nw = orig.width, nh = orig.height;
-
-      switch (handle) {
-        case 'se': nw += dx; nh += dy; break;
-        case 'sw': nw -= dx; nh += dy; nx += dx; break;
-        case 'ne': nw += dx; nh -= dy; ny += dy; break;
-        case 'nw': nw -= dx; nh -= dy; nx += dx; ny += dy; break;
-        case 'n': nh -= dy; ny += dy; break;
-        case 's': nh += dy; break;
-        case 'w': nw -= dx; nx += dx; break;
-        case 'e': nw += dx; break;
-      }
-
-      // Ограничения
-      if (handle.includes('w')) {
-        const maxX = orig.x + orig.width;
-        nx = Math.min(maxX - MIN, nx);
-        nx = Math.max(0, nx);
-        nw = maxX - nx;
-      } else if (handle.includes('e')) {
-        nw = Math.max(MIN, Math.min(this.canvas.width - orig.x, nw));
-      }
-
-      if (handle.includes('n')) {
-        const maxY = orig.y + orig.height;
-        ny = Math.min(maxY - MIN, ny);
-        ny = Math.max(0, ny);
-        nh = maxY - ny;
-      } else if (handle.includes('s')) {
-        nh = Math.max(MIN, Math.min(this.canvas.height - orig.y, nh));
-      }
-
-      layer.rect.x = nx;
-      layer.rect.y = ny;
-      layer.rect.width = nw;
-      layer.rect.height = nh;
-    } catch (error) {
-      console.error('Error in updateRectFromHandle:', error);
-    }
-  }
-
-  /**
      * Сбрасывает текущий выбор слоя и состояние перетаскивания
      */
   resetSelection() {
@@ -1738,54 +842,6 @@ export default class ImageEditor {
   }
 
   /**
-     * Обертывает текст в прямоугольник с учетом максимальной ширины и высоты
-     * @param {CanvasRenderingContext2D} context - Контекст 2D для рисования
-     * @param {string} text - Текст для обертывания
-     * @param {number} x - Координата x начала текста
-     * @param {number} y - Координата y начала текста
-     * @param {number} maxWidth - Максимальная ширина текста
-     * @param {number} maxHeight - Максимальная высота текста
-     * @param {number} fontSize - Размер шрифта
-     */
-  wrapTextInRect(context, text, x, y, maxWidth, maxHeight, fontSize) {
-    wrapTextInRect(context, text, x, y, maxWidth, maxHeight, fontSize);
-  }
-
-  /**
-     * Форматирует размер файла в удобочитаемый формат
-     * @param {number} bytes - Размер файла в байтах
-     * @returns {string} - Форматированный размер файла
-     */
-  formatFileSize(bytes) {
-    return formatFileSize(bytes);
-  }
-
-  /**
-     * Получает координаты холста для события мыши
-     * @param {MouseEvent} event - Событие мыши
-     * @returns {Object} - Объект с координатами x и y
-     */
-  getCanvasCoords(event) {
-    try {
-      const canvasR = this.canvas.getBoundingClientRect();
-            
-      // Защита от деления на ноль при нулевых размерах canvas
-      if (!this.canvas.clientWidth || !this.canvas.clientHeight) {
-        console.warn('getCanvasCoords: canvas has zero dimensions');
-        return { x: 0, y: 0 };
-      }
-            
-      return {
-        x: (event.clientX - canvasR.left) * (this.canvas.width / this.canvas.clientWidth),
-        y: (event.clientY - canvasR.top) * (this.canvas.height / this.canvas.clientHeight)
-      };
-    } catch (error) {
-      console.error('Error in getCanvasCoords:', error);
-      return { x: 0, y: 0 };
-    }
-  }
-
-  /**
      * Применяет кроп к изображению, обрезая его до выбранной области
      */
   async applyCrop() {
@@ -1817,38 +873,6 @@ export default class ImageEditor {
     } catch (error) {
       console.error('Error during crop operation:', error);
     }
-  }
-
-  /**
-     * Валидирует данные для кропа
-     * @returns {Object|null} Объект с cropLayer или null при ошибке
-     */
-  _validateCropData() {
-    return validateCropData(this.layerManager, this.canvas, this.selectionOverlay, this.originalImage);
-  }
-
-  _calculateCropCoordinates(cropRect) {
-    return calculateCropCoordinates(cropRect, this.canvas, this.originalImage);
-  }
-
-  _createCroppedCanvas(cropCoords) {
-    return createCroppedCanvas(cropCoords, this.originalImage);
-  }
-
-  _applyLayersToCroppedCanvas(tempCtx, cropCoords) {
-    applyLayersToCroppedCanvas(tempCtx, this.layerManager.layers, cropCoords, this.originalImage, wrapTextInRect, this.CONSTANTS?.LINE_WIDTH);
-  }
-
-  _applyRectLayerToCroppedCanvas(tempCtx, layer, cropCoords) {
-    applyRectLayerToCroppedCanvas(tempCtx, layer, cropCoords, this.originalImage, wrapTextInRect, this.CONSTANTS?.LINE_WIDTH);
-  }
-
-  _applyLineLayerToCroppedCanvas(tempCtx, layer, cropCoords) {
-    applyLineLayerToCroppedCanvas(tempCtx, layer, cropCoords);
-  }
-
-  _calculateVisibleArea(layerOrigX, layerOrigY, layerOrigWidth, layerOrigHeight, cropCoords) {
-    return geometry.calculateVisibleArea(layerOrigX, layerOrigY, layerOrigWidth, layerOrigHeight, cropCoords);
   }
 
   /**
@@ -1893,23 +917,6 @@ export default class ImageEditor {
   }
 
   /**
-     * Пересчитывает координаты слоёв после кропа и удаляет crop-слой
-     * @param {Object} cropCoords - Координаты кропа
-     * @param {Object} cropLayer - Crop-слой для удаления
-     */
-  _updateLayersAfterCrop(cropCoords, cropLayer) {
-    updateLayersAfterCrop(this.layerManager, cropCoords, cropLayer, this.context);
-  }
-
-  _updateRectLayerCoordinates(layer, cropRect, currentCanvasScaleX, currentCanvasScaleY) {
-    updateRectLayerCoordinates(layer, cropRect, currentCanvasScaleX, currentCanvasScaleY, this.canvas, this.originalImage);
-  }
-
-  _updateLineLayerCoordinates(layer, cropRect, currentCanvasScaleX, currentCanvasScaleY) {
-    updateLineLayerCoordinates(layer, cropRect, currentCanvasScaleX, currentCanvasScaleY, this.canvas, this.originalImage);
-  }
-
-  /**
      * Финализирует операцию кропа: история, UI, сброс инструмента
      */
   async _finalizeCrop() {
@@ -1947,7 +954,7 @@ export default class ImageEditor {
     try {
       // Проверяем, что оба значения являются объектами
       if (typeof target !== 'object' || target === null || Array.isArray(target) ||
-                typeof source !== 'object' || source === null || Array.isArray(source)) {
+        typeof source !== 'object' || source === null || Array.isArray(source)) {
         return source;
       }
 
@@ -1960,8 +967,8 @@ export default class ImageEditor {
           // Если ключ существует в обоих объектах и оба значения являются объектами,
           // рекурсивно вызываем deepMerge
           if (key in target && typeof target[key] === 'object' && typeof source[key] === 'object' &&
-                        target[key] !== null && source[key] !== null &&
-                        !Array.isArray(target[key]) && !Array.isArray(source[key])) {
+            target[key] !== null && source[key] !== null &&
+            !Array.isArray(target[key]) && !Array.isArray(source[key])) {
             output[key] = this.deepMerge(target[key], source[key]);
           } else {
             // В противном случае, просто присваиваем значение из source
@@ -2017,17 +1024,8 @@ export default class ImageEditor {
       document.getElementById('lineBtn')?.removeEventListener('click', this.boundLineClick);
       document.getElementById('textBtn')?.removeEventListener('click', this.boundTextClick);
 
-      window?.removeEventListener('resize', this.boundResize);
-
-      document.getElementById('layersList')?.removeEventListener('click', this.boundLayersListClick);
-      document.removeEventListener('keydown', this.boundKeyDown);
-
-      document.removeEventListener('mousemove', this.boundMouseMove);
-      document.removeEventListener('mouseup', this.boundMouseUp);
-
-      // Удаляем обработчики с selectionOverlay
-      this.selectionOverlay?.removeEventListener('mousedown', this.boundOverlayMouseDown);
-      this.selectionOverlay?.removeEventListener('mousemove', this.boundOverlayHover);
+      // Уничтожаем EventManager (удаляет mouse/keyboard/overlay/resize/paste)
+      this.eventManager?.destroy();
 
       // Удаляем обработчики с активного инструмента
       if (this.activeTool && typeof this.activeTool.deactivate === 'function') {
@@ -2055,6 +1053,11 @@ export default class ImageEditor {
       // Очищаем настройки
       this.toolSettings = null;
       this.settingsElements = null;
+
+      // Очищаем подмодули
+      this.canvasManager = null;
+      this.selectionRenderer = null;
+      this.eventManager = null;
 
       // Уничтожаем менеджер слоев
       this.layerManager?.destroy();
