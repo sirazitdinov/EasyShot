@@ -2719,7 +2719,7 @@ export default class ImageEditor {
 
       // Проходим по всем ключам в source
       for (const key in source) {
-        if (source.hasOwnProperty(key)) {
+        if (Object.prototype.hasOwnProperty.call(source, key)) {
           // Если ключ существует в обоих объектах и оба значения являются объектами,
           // рекурсивно вызываем deepMerge
           if (key in target && typeof target[key] === 'object' && typeof source[key] === 'object' &&

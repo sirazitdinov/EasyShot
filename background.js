@@ -27,19 +27,21 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       }
 
       switch (request.action) {
-        case 'captureFullScreen':
+        case 'captureFullScreen': {
           const fullDataUrl = await captureVisibleTab();
           await saveImage(fullDataUrl);
           return { success: true };
+        }
 
         case 'captureArea':
           await injectOverlayScript(tab.id);
           return { success: true };
 
-        case 'processAreaCapture':
+        case 'processAreaCapture': {
           const croppedDataUrl = await processAreaCapture(request.coordinates);
           await saveImage(croppedDataUrl);
           return { success: true };
+        }
 
         case 'openEditor':
           await openEditor();
