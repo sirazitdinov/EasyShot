@@ -1,6 +1,7 @@
 // Tools/LineTool.js
 import BaseTool from './BaseTool.js';
 import Helper from '../Helper.js';
+import * as lineRenderer from '../renderers/lineRenderer.js';
 
 export default class LineTool extends BaseTool {
   constructor(editor, settings = {}) {
@@ -141,5 +142,25 @@ export default class LineTool extends BaseTool {
     }
 
     this.updateOverlay();
+  }
+
+  renderLayer(ctx, layer, options = {}) {
+    lineRenderer.render(ctx, layer, { lineWidth: this.editor?.CONSTANTS?.LINE_WIDTH, ...options });
+  }
+
+  hitTest(point, layer) {
+    return lineRenderer.hitTest(point, layer);
+  }
+
+  getBounds(layer) {
+    if (!layer.points) return null;
+    const { x1, y1, x2, y2 } = layer.points;
+    const thickness = layer.params?.thickness ?? 2;
+    const padding = Math.max(12, thickness + 5);
+    const minX = Math.min(x1, x2) - padding;
+    const minY = Math.min(y1, y2) - padding;
+    const maxX = Math.max(x1, x2) + padding;
+    const maxY = Math.max(y1, y2) + padding;
+    return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
   }
 }

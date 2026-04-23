@@ -1,6 +1,7 @@
 // Tools/TextTool.js
 import BaseTool from './BaseTool.js';
 import Helper from '../Helper.js';
+import * as textRenderer from '../renderers/textRenderer.js';
 
 /**
  * Инструмент для добавления и редактирования текста.
@@ -330,5 +331,18 @@ export default class TextTool extends BaseTool {
     // Вызываем базовую очистку для удаления previewElement
     super.cleanupOverlay();
     this.textPreview = null;
+  }
+
+  renderLayer(ctx, layer, options = {}) {
+    textRenderer.render(ctx, layer, options);
+  }
+
+  hitTest(point, layer) {
+    return textRenderer.hitTest(point, layer);
+  }
+
+  getBounds(layer) {
+    if (!layer.rect) return null;
+    return { x: layer.rect.x, y: layer.rect.y, width: layer.rect.width, height: layer.rect.height };
   }
 }

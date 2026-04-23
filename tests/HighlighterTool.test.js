@@ -508,6 +508,59 @@ describe('HighlighterTool', () => {
     })
   })
 
+  describe('renderLayer', () => {
+    it('должен рендерить highlighter без ошибок', () => {
+      const ctx = {
+        save: vi.fn(),
+        restore: vi.fn(),
+        fillRect: vi.fn(),
+      }
+      const mockLayer = {
+        type: 'highlighter',
+        params: { color: '#FFA500', opacity: 0.3 },
+        rect: { x: 10, y: 10, width: 100, height: 100 }
+      }
+
+      expect(() => highlighterTool.renderLayer(ctx, mockLayer)).not.toThrow()
+      expect(ctx.save).toHaveBeenCalled()
+      expect(ctx.restore).toHaveBeenCalled()
+    })
+
+    it('не должен рендерить если нет rect', () => {
+      const ctx = { save: vi.fn(), restore: vi.fn() }
+      highlighterTool.renderLayer(ctx, { type: 'highlighter', rect: null })
+      expect(ctx.save).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('hitTest', () => {
+    it('должен возвращать true при попадании внутрь rect', () => {
+      const mockLayer = {
+        type: 'highlighter',
+        rect: { x: 10, y: 10, width: 100, height: 100 }
+      }
+      expect(highlighterTool.hitTest({ x: 50, y: 50 }, mockLayer)).toBe(true)
+    })
+
+    it('должен возвращать false если нет rect', () => {
+      expect(highlighterTool.hitTest({ x: 50, y: 50 }, { type: 'highlighter', rect: null })).toBe(false)
+    })
+  })
+
+  describe('getBounds', () => {
+    it('должен возвращать bounds для rect', () => {
+      const mockLayer = {
+        type: 'highlighter',
+        rect: { x: 10, y: 10, width: 100, height: 100 }
+      }
+      expect(highlighterTool.getBounds(mockLayer)).toEqual({ x: 10, y: 10, width: 100, height: 100 })
+    })
+
+    it('должен возвращать null если нет rect', () => {
+      expect(highlighterTool.getBounds({ type: 'highlighter', rect: null })).toBeNull()
+    })
+  })
+
   describe('Интеграция: изменение прозрачности и цвета', () => {
     it('должен обновлять настройки при последовательном изменении цвета и прозрачности', () => {
       highlighterTool.setupOverlay(mockOverlay)

@@ -267,6 +267,75 @@ describe('LineTool', () => {
     })
   })
 
+  describe('renderLayer', () => {
+    it('должен рендерить линию без ошибок', () => {
+      const ctx = {
+        save: vi.fn(),
+        restore: vi.fn(),
+        stroke: vi.fn(),
+        fill: vi.fn(),
+        beginPath: vi.fn(),
+        moveTo: vi.fn(),
+        lineTo: vi.fn(),
+        closePath: vi.fn(),
+        arc: vi.fn(),
+      }
+      const mockLayer = {
+        type: 'line',
+        params: { color: '#ff0000', thickness: 2 },
+        points: { x1: 10, y1: 10, x2: 100, y2: 100 }
+      }
+
+      expect(() => lineTool.renderLayer(ctx, mockLayer)).not.toThrow()
+      expect(ctx.save).toHaveBeenCalled()
+      expect(ctx.restore).toHaveBeenCalled()
+    })
+
+    it('не должен рендерить если нет points', () => {
+      const ctx = { save: vi.fn(), restore: vi.fn() }
+      const mockLayer = { type: 'line', params: {}, points: null }
+
+      lineTool.renderLayer(ctx, mockLayer)
+      expect(ctx.save).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('hitTest', () => {
+    it('должен возвращать true при попадании в точку линии', () => {
+      const mockLayer = {
+        type: 'line',
+        params: { thickness: 2 },
+        points: { x1: 10, y1: 10, x2: 100, y2: 100 }
+      }
+
+      expect(lineTool.hitTest({ x: 10, y: 10 }, mockLayer)).toBe(true)
+    })
+
+    it('должен возвращать false если нет points', () => {
+      expect(lineTool.hitTest({ x: 10, y: 10 }, { type: 'line', points: null })).toBe(false)
+    })
+  })
+
+  describe('getBounds', () => {
+    it('должен возвращать bounds с padding для линии', () => {
+      const mockLayer = {
+        type: 'line',
+        params: { thickness: 2 },
+        points: { x1: 10, y1: 10, x2: 100, y2: 100 }
+      }
+
+      const bounds = lineTool.getBounds(mockLayer)
+      expect(bounds.x).toBeLessThan(10)
+      expect(bounds.y).toBeLessThan(10)
+      expect(bounds.width).toBeGreaterThan(90)
+      expect(bounds.height).toBeGreaterThan(90)
+    })
+
+    it('должен возвращать null если нет points', () => {
+      expect(lineTool.getBounds({ type: 'line', points: null })).toBeNull()
+    })
+  })
+
   describe('Интеграция: изменение цвета и толщины линии', () => {
     it('должен обновлять цвет линии на канвасе при изменении настройки цвета', () => {
       const mockLayer = {

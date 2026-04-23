@@ -390,6 +390,62 @@ describe('HighlightTool', () => {
     })
   })
 
+  describe('renderLayer', () => {
+    it('должен рендерить highlight без ошибок', () => {
+      const ctx = {
+        save: vi.fn(),
+        restore: vi.fn(),
+        beginPath: vi.fn(),
+        moveTo: vi.fn(),
+        lineTo: vi.fn(),
+        stroke: vi.fn(),
+      }
+      const mockLayer = {
+        type: 'highlight',
+        params: { color: '#ff0000', thickness: 2 },
+        rect: { x: 10, y: 10, width: 100, height: 100 }
+      }
+
+      expect(() => highlightTool.renderLayer(ctx, mockLayer)).not.toThrow()
+      expect(ctx.save).toHaveBeenCalled()
+      expect(ctx.restore).toHaveBeenCalled()
+    })
+
+    it('не должен рендерить если нет rect', () => {
+      const ctx = { save: vi.fn(), restore: vi.fn() }
+      highlightTool.renderLayer(ctx, { type: 'highlight', rect: null })
+      expect(ctx.save).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('hitTest', () => {
+    it('должен возвращать true при попадании внутрь rect', () => {
+      const mockLayer = {
+        type: 'highlight',
+        rect: { x: 10, y: 10, width: 100, height: 100 }
+      }
+      expect(highlightTool.hitTest({ x: 50, y: 50 }, mockLayer)).toBe(true)
+    })
+
+    it('должен возвращать false если нет rect', () => {
+      expect(highlightTool.hitTest({ x: 50, y: 50 }, { type: 'highlight', rect: null })).toBe(false)
+    })
+  })
+
+  describe('getBounds', () => {
+    it('должен возвращать bounds для rect', () => {
+      const mockLayer = {
+        type: 'highlight',
+        rect: { x: 10, y: 10, width: 100, height: 100 }
+      }
+      expect(highlightTool.getBounds(mockLayer)).toEqual({ x: 10, y: 10, width: 100, height: 100 })
+    })
+
+    it('должен возвращать null если нет rect', () => {
+      expect(highlightTool.getBounds({ type: 'highlight', rect: null })).toBeNull()
+    })
+  })
+
   describe('Интеграция: изменение цвета рамки', () => {
     it('должен обновлять цвет рамки при изменении настройки цвета', () => {
       highlightTool.setupOverlay(mockOverlay)

@@ -1,6 +1,7 @@
 // Tools/BlurTool.js
 import BaseTool from './BaseTool.js';
 import Helper from '../Helper.js';
+import * as blurRenderer from '../renderers/blurRenderer.js';
 
 export default class BlurTool extends BaseTool {
   constructor(editor, settings = {}) {
@@ -162,4 +163,16 @@ export default class BlurTool extends BaseTool {
     this.updateOverlay();
   }
 
+  renderLayer(ctx, layer, options = {}) {
+    blurRenderer.render(ctx, layer, { image: this.editor?.image, ...options });
+  }
+
+  hitTest(point, layer) {
+    return blurRenderer.hitTest(point, layer);
+  }
+
+  getBounds(layer) {
+    if (!layer.rect) return null;
+    return { x: layer.rect.x, y: layer.rect.y, width: layer.rect.width, height: layer.rect.height };
+  }
 }

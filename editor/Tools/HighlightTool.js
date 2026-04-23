@@ -1,6 +1,7 @@
 // Tools/HighlightTool.js
 import BaseTool from './BaseTool.js';
 import Helper from '../Helper.js';
+import * as highlightRenderer from '../renderers/highlightRenderer.js';
 
 export default class HighlightTool extends BaseTool {
   constructor(editor, settings) {
@@ -168,5 +169,18 @@ export default class HighlightTool extends BaseTool {
     }
 
     this.updateOverlay();
+  }
+
+  renderLayer(ctx, layer, options = {}) {
+    highlightRenderer.render(ctx, layer, { lineWidth: this.editor?.CONSTANTS?.LINE_WIDTH, ...options });
+  }
+
+  hitTest(point, layer) {
+    return highlightRenderer.hitTest(point, layer);
+  }
+
+  getBounds(layer) {
+    if (!layer.rect) return null;
+    return { x: layer.rect.x, y: layer.rect.y, width: layer.rect.width, height: layer.rect.height };
   }
 }

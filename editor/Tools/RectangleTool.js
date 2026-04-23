@@ -1,6 +1,7 @@
 // Tools/RectangleTool.js
 import BaseTool from './BaseTool.js';
 import Helper from '../Helper.js';
+import * as rectangleRenderer from '../renderers/rectangleRenderer.js';
 
 export default class RectangleTool extends BaseTool {
   constructor(editor, settings = {}) {
@@ -179,5 +180,18 @@ export default class RectangleTool extends BaseTool {
     }
 
     this.updateOverlay();
+  }
+
+  renderLayer(ctx, layer, options = {}) {
+    rectangleRenderer.render(ctx, layer, { lineWidth: this.editor?.CONSTANTS?.LINE_WIDTH, ...options });
+  }
+
+  hitTest(point, layer) {
+    return rectangleRenderer.hitTest(point, layer);
+  }
+
+  getBounds(layer) {
+    if (!layer.rect) return null;
+    return { x: layer.rect.x, y: layer.rect.y, width: layer.rect.width, height: layer.rect.height };
   }
 }

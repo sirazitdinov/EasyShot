@@ -14,13 +14,6 @@ import Helper from './Helper.js';
 import * as geometry from './utils/geometry.js';
 import { wrapTextInRect, formatFileSize } from './utils/canvas.js';
 
-import * as blurRenderer from './renderers/blurRenderer.js';
-import * as rectangleRenderer from './renderers/rectangleRenderer.js';
-import * as highlightRenderer from './renderers/highlightRenderer.js';
-import * as highlighterRenderer from './renderers/highlighterRenderer.js';
-import * as lineRenderer from './renderers/lineRenderer.js';
-import * as textRenderer from './renderers/textRenderer.js';
-
 import { validateCropData, calculateCropCoordinates } from './crop/coordinates.js';
 import { createCroppedCanvas } from './crop/canvas.js';
 import {
@@ -890,39 +883,34 @@ export default class ImageEditor {
     if (!this.layerManager || !Array.isArray(this.layerManager.layers)) return;
     if (!this.context || !this.canvas) return;
 
-    const rendererMap = {
-      blur: blurRenderer,
-      rectangle: rectangleRenderer,
-      highlighter: highlighterRenderer,
-      line: lineRenderer,
-      text: textRenderer,
-    };
-
     this.layerManager.layers.forEach(layer => {
       if (!layer || layer.type === 'crop' || layer.type === 'base') return;
       if (layer.visible === false) return;
 
+      const tool = this.tools[layer.type];
+      if (!tool?.renderLayer) return;
+
       // Простейшая оптимизация по dirtyRegion — скипаем слой, если он точно вне области.
-      if (dirtyRegion && layer.rect) {
-        const intersects =
-                    dirtyRegion.x < layer.rect.x + layer.rect.width &&
-                    dirtyRegion.x + dirtyRegion.width > layer.rect.x &&
-                    dirtyRegion.y < layer.rect.y + layer.rect.height &&
-                    dirtyRegion.y + dirtyRegion.height > layer.rect.y;
-        if (!intersects) {
-          return;
+      if (dirtyRegion) {
+        const bounds = tool.getBounds?.(layer);
+        if (bounds) {
+          const intersects =
+                        dirtyRegion.x < bounds.x + bounds.width &&
+                        dirtyRegion.x + dirtyRegion.width > bounds.x &&
+                        dirtyRegion.y < bounds.y + bounds.height &&
+                        dirtyRegion.y + dirtyRegion.height > bounds.y;
+          if (!intersects) {
+            return;
+          }
         }
       }
 
-      const renderer = rendererMap[layer.type];
-      if (renderer) {
-        this.context.save();
-        renderer.render(this.context, layer, {
-          image: this.image,
-          lineWidth: this.CONSTANTS?.LINE_WIDTH,
-        });
-        this.context.restore();
-      }
+      this.context.save();
+      tool.renderLayer(this.context, layer, {
+        image: this.image,
+        lineWidth: this.CONSTANTS?.LINE_WIDTH,
+      });
+      this.context.restore();
     });
   }
 
@@ -1110,28 +1098,12 @@ export default class ImageEditor {
       const coords = this.getCanvasCoords(e);
       let hit = null;
 
-      // 1. Поиск попадания в слой
+      // 1. Поиск попадания в слой (делегируем инструментам)
       for (const l of this.layerManager.layers) {
-        if (l.rect && coords.x >= l.rect.x && coords.x <= l.rect.x + l.rect.width &&
-                    coords.y >= l.rect.y && coords.y <= l.rect.y + l.rect.height) {
+        const tool = this.tools[l.type];
+        if (tool?.hitTest?.(coords, l)) {
           hit = l;
           break;
-        }
-        if (l.points) {
-          const d1 = Math.hypot(coords.x - l.points.x1, coords.y - l.points.y1);
-          const d2 = Math.hypot(coords.x - l.points.x2, coords.y - l.points.y2);
-                    
-          // Проверка попадания в точки линии
-          if (d1 < 12 || d2 < 12) { hit = l; break; }
-                    
-          // Проверка попадания в саму линию (расстояние от точки до отрезка)
-          const distToSegment = this.pointToSegmentDistance(
-            coords.x, coords.y,
-            l.points.x1, l.points.y1,
-            l.points.x2, l.points.y2
-          );
-          const hitTolerance = Math.max(10, (l.params?.thickness || 2) + 5);
-          if (distToSegment < hitTolerance) { hit = l; break; }
         }
       }
 

@@ -68,6 +68,31 @@ export default class BaseTool {
     this.settings[key] = value;
   }
 
+  // Рендеринг слоя на canvas — инструменты переопределяют
+
+  /**
+   * Рендерит слой этого типа на canvas
+   * @param {CanvasRenderingContext2D} ctx
+   * @param {Object} layer
+   * @param {Object} [options]
+   */
+  renderLayer(ctx, layer, options = {}) { }
+
+  /**
+   * Проверяет, попадает ли точка в слой
+   * @param {{x:number,y:number}} point
+   * @param {Object} layer
+   * @returns {boolean}
+   */
+  hitTest(point, layer) { return false; }
+
+  /**
+   * Возвращает bounding box слоя (для dirty region)
+   * @param {Object} layer
+   * @returns {{x:number,y:number,width:number,height:number}|null}
+   */
+  getBounds(layer) { return null; }
+
   // Общий механизм для DOM-превью
 
   /**
