@@ -499,6 +499,10 @@ export default class ImageEditor {
     const reader = new FileReader();
     reader.onload = (e) => {
       const img = new Image();
+      img.onerror = () => {
+        alert('Не удалось загрузить изображение. Возможно, файл повреждён или имеет неподдерживаемый формат.');
+      };
+
       img.onload = () => {
         // Храним canvas в full-resolution (в пикселях источника)
         this.canvas.width = img.naturalWidth;

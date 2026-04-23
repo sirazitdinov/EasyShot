@@ -3,7 +3,7 @@ import BaseTool from './BaseTool.js';
 import Helper from '../Helper.js';
 
 export default class BlurTool extends BaseTool {
-  constructor(editor, settings) {
+  constructor(editor, settings = {}) {
     super(editor, settings, 'blur', {
       supportsCreation: true,
       settingsIds: ['blurRadiusLabel'],

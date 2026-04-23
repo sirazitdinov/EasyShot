@@ -11,7 +11,7 @@ export default class BaseTool {
      * @param {string} options.name - Название инструмента
      * @param {string[]} options.settingsIds - Идентификаторы DOM-элементов с настройками инструмента
      */
-  constructor(editor, settings, name, options = {}) {
+  constructor(editor, settings = {}, name, options = {}) {
     this.editor = editor;       // ссылка на EditorCore
     this.settings = settings;   // объект настроек для инструмента
     this.name = name;           // 'crop' | 'blur' | 'highlight' | 'line' | 'text'

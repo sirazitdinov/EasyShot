@@ -3,7 +3,7 @@ import BaseTool from './BaseTool.js';
 import Helper from '../Helper.js';
 
 export default class RectangleTool extends BaseTool {
-  constructor(editor, settings) {
+  constructor(editor, settings = {}) {
     super(editor, settings, 'rectangle', {
       supportsCreation: true,
       settingsIds: ['highlightColorLabel', 'thicknessLabel']

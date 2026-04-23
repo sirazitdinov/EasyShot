@@ -65,11 +65,3 @@ document.getElementById('rulerToggle').addEventListener('click', () => {
   window.close(); // Закрываем popup после клика
 });
 
-// Обработка горячей клавиши
-chrome.commands.onCommand.addListener((command) => {
-  if (command === 'toggle-ruler') {
-    chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
-      chrome.tabs.sendMessage(tabs[0].id, {action: 'toggleRuler'});
-    });
-  }
-});

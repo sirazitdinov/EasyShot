@@ -7,7 +7,7 @@ import Helper from '../Helper.js';
  * Вместо prompt() использует inline-виджет (textarea) поверх canvas.
  */
 export default class TextTool extends BaseTool {
-  constructor(editor, settings) {
+  constructor(editor, settings = {}) {
     super(editor, settings, 'text', {
       supportsCreation: true,
       settingsIds: ['textColorLabel', 'textSizeLabel'],

@@ -18,6 +18,11 @@ class PixelRuler {
     this.originalEndPoint = null;
     this.resizeHandle = null;
     this.resizeHandles = {};
+
+    // Предварительно bound обработчики для корректного removeEventListener
+    this._boundResizeMove = this.handleResizeMove.bind(this);
+    this._boundResizeEnd = this.handleResizeEnd.bind(this);
+
     this.init();
   }
 
@@ -242,8 +247,8 @@ class PixelRuler {
     this.resizeOriginalStart = {...this.startPoint};
     this.resizeOriginalEnd = {...this.endPoint};
 
-    document.addEventListener('mousemove', this.handleResizeMove.bind(this));
-    document.addEventListener('mouseup', this.handleResizeEnd.bind(this));
+    document.addEventListener('mousemove', this._boundResizeMove);
+    document.addEventListener('mouseup', this._boundResizeEnd);
   }
 
   handleResizeMove(e) {
@@ -291,8 +296,8 @@ class PixelRuler {
     this.isResizing = false;
     this.resizeHandle = null;
 
-    document.removeEventListener('mousemove', this.handleResizeMove.bind(this));
-    document.removeEventListener('mouseup', this.handleResizeEnd.bind(this));
+    document.removeEventListener('mousemove', this._boundResizeMove);
+    document.removeEventListener('mouseup', this._boundResizeEnd);
   }
 
   updateRulerDisplay() {

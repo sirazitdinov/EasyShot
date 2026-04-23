@@ -14,16 +14,34 @@ export default class HistoryManager {
      * @param {Object} options
      * @param {number} [options.maxHistory=50] — максимальное количество шагов истории
      * @param {boolean} [options.deduplicate=true] — избегать повторяющихся состояний
+     * @param {number} [options.maxMemoryMB=200] — максимальный объём памяти на историю (в МБ)
      */
   constructor(editor, options = {}) {
     this.editor = editor;
     this.maxHistory = options.maxHistory ?? 50;
     this.deduplicate = options.deduplicate ?? true;
+    this.maxMemoryBytes = (options.maxMemoryMB ?? 200) * 1024 * 1024;
 
     this.history = [];
     this.position = -1;
     this.isInsideAtomicOperation = false;
     this.atomicSnapshot = null;
+  }
+
+  /**
+     * Вычисляет динамический лимит истории на основе размера canvas,
+     * чтобы общий объём imageData не превышал maxMemoryBytes.
+     * @returns {number}
+     */
+  _getDynamicMaxHistory() {
+    const canvas = this.editor.canvas;
+    if (!canvas) return this.maxHistory;
+
+    const snapshotSize = canvas.width * canvas.height * 4; // RGBA = 4 байта на пиксель
+    if (!snapshotSize) return this.maxHistory;
+
+    const limitByMemory = Math.floor(this.maxMemoryBytes / snapshotSize);
+    return Math.max(2, Math.min(this.maxHistory, limitByMemory));
   }
 
   /**
@@ -54,8 +72,9 @@ export default class HistoryManager {
     this.history.push(newState);
     this.position = this.history.length - 1;
 
-    // Обрезка до макс. размера
-    if (this.history.length > this.maxHistory) {
+    // Обрезка до макс. размера с учётом динамического лимита по памяти
+    const dynamicMax = this._getDynamicMaxHistory();
+    if (this.history.length > dynamicMax) {
       this.history.shift();
       this.position--;
     }
@@ -88,7 +107,8 @@ export default class HistoryManager {
       if (!this.isStateEqual(currentState, this.atomicSnapshot)) {
         this.history.push(currentState);
         this.position = this.history.length - 1;
-        if (this.history.length > this.maxHistory) {
+        const dynamicMax = this._getDynamicMaxHistory();
+        if (this.history.length > dynamicMax) {
           this.history.shift();
           this.position--;
         }

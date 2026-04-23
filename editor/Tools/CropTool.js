@@ -3,7 +3,7 @@ import BaseTool from './BaseTool.js';
 import Helper from '../Helper.js';
 
 export default class CropTool extends BaseTool {
-  constructor(editor, settings) {
+  constructor(editor, settings = {}) {
     // name и supportsCreation задаём через options, как для других инструментов
     super(editor, settings, 'crop', { supportsCreation: true });
   }
