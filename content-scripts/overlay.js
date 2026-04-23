@@ -76,12 +76,12 @@
     try {
       const rect = selection.getBoundingClientRect();
       await chrome.runtime.sendMessage({
-        action: "processAreaCapture",
+        action: 'processAreaCapture',
         coordinates: {
-            x: Math.round(rect.left) + 2,
-            y: Math.round(rect.top) + 2,
-            width: Math.round(rect.width) - 4,
-            height: Math.round(rect.height) - 4
+          x: Math.round(rect.left) + 2,
+          y: Math.round(rect.top) + 2,
+          width: Math.round(rect.width) - 4,
+          height: Math.round(rect.height) - 4
         }
       });
     } catch (error) {

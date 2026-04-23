@@ -46,30 +46,30 @@ function resetCaptureState() {
 }
 
 document.getElementById('fullScreen').addEventListener('click', () => {
-  handleAction("captureFullScreen");
+  handleAction('captureFullScreen');
 });
 
 document.getElementById('areaScreen').addEventListener('click', () => {
   resetCaptureState();
-  handleAction("captureArea");
+  handleAction('captureArea');
 });
 
 document.getElementById('openEditor').addEventListener('click', () => {
-  handleAction("openEditor");
+  handleAction('openEditor');
 });
 
 document.getElementById('rulerToggle').addEventListener('click', () => {
   chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
-    chrome.tabs.sendMessage(tabs[0].id, {action: "toggleRuler"});
+    chrome.tabs.sendMessage(tabs[0].id, {action: 'toggleRuler'});
   });
   window.close(); // Закрываем popup после клика
 });
 
 // Обработка горячей клавиши
 chrome.commands.onCommand.addListener((command) => {
-  if (command === "toggle-ruler") {
+  if (command === 'toggle-ruler') {
     chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
-      chrome.tabs.sendMessage(tabs[0].id, {action: "toggleRuler"});
+      chrome.tabs.sendMessage(tabs[0].id, {action: 'toggleRuler'});
     });
   }
 });

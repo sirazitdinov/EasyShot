@@ -141,7 +141,7 @@ describe('ImageEditor - Crop Methods', () => {
   });
 
   describe('_drawHighlightLayer', () => {
-    it('должен рисовать highlight прямоугольник с правильными координатами', () => {
+    it('должен рисовать highlight рамку из 4 линий с правильными координатами', () => {
       const cropCoords = {
         validX: 100,
         validY: 100,
@@ -159,10 +159,13 @@ describe('ImageEditor - Crop Methods', () => {
         cropCoords
       );
 
-      expect(editor.context.strokeRect).toHaveBeenCalledWith(50, 50, 100, 100);
+      // Рамка рисуется через moveTo/lineTo, а не strokeRect
+      expect(editor.context.moveTo).toHaveBeenCalled();
+      expect(editor.context.lineTo).toHaveBeenCalled();
+      expect(editor.context.stroke).toHaveBeenCalled();
     });
 
-    it('должен рисовать с координатами относительно кропа даже для слоев за пределами', () => {
+    it('не должен рисовать линии для слоя полностью за пределами кропа', () => {
       const cropCoords = {
         validX: 100,
         validY: 100,
@@ -180,8 +183,9 @@ describe('ImageEditor - Crop Methods', () => {
         cropCoords
       );
 
-      // Координаты будут отрицательными относительно кропа: 500 - 100 = 400
-      expect(editor.context.strokeRect).toHaveBeenCalledWith(400, 400, 100, 100);
+      // Слой полностью за пределами кропа — линии не рисуются, но stroke() может вызваться с пустым path
+      expect(editor.context.moveTo).not.toHaveBeenCalled();
+      expect(editor.context.lineTo).not.toHaveBeenCalled();
     });
   });
 
@@ -336,7 +340,10 @@ describe('ImageEditor - Crop Methods', () => {
 
       editor._applyRectLayerToCroppedCanvas(editor.context, layer, cropCoords);
 
-      expect(editor.context.strokeRect).toHaveBeenCalledWith(50, 50, 100, 100);
+      // highlight слой теперь рисуется через _drawHighlightLayer (moveTo/lineTo/stroke)
+      expect(editor.context.moveTo).toHaveBeenCalled();
+      expect(editor.context.lineTo).toHaveBeenCalled();
+      expect(editor.context.stroke).toHaveBeenCalled();
     });
   });
 });
