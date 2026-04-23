@@ -1,101 +1,54 @@
 import { describe, it, expect, vi } from 'vitest';
 
-// Мокаем зависимости перед импортом
-vi.mock('../editor/Tools/CropTool.js', () => ({ default: class {} }));
-vi.mock('../editor/Tools/BlurTool.js', () => ({ default: class {} }));
-vi.mock('../editor/Tools/HighlightTool.js', () => ({ default: class {} }));
-vi.mock('../editor/Tools/LineTool.js', () => ({ default: class {} }));
-vi.mock('../editor/Tools/TextTool.js', () => ({ default: class {} }));
-vi.mock('../editor/Tools/ToolSettingsUI.js', () => ({ default: class {} }));
-vi.mock('../editor/LayerManager.js', () => ({ 
-  default: class { 
-    init() {}
-    setupDragAndDrop() {}
-    destroy() {}
-  } 
-}));
-vi.mock('../editor/HistoryManager.js', () => ({ 
-  default: class { 
-    constructor() {
-      this.history = [];
-      this.position = -1;
-    }
-    clear() {}
-    commit() {}
-    undo() {}
-    redo() {}
-    canUndo() { return false; }
-    canRedo() { return false; }
-    beginAtomicOperation() {}
-    endAtomicOperation() {}
-    destroy() {}
-  } 
-}));
-vi.mock('../editor/Helper.js', () => ({
-  default: {
-    formatSize: (size) => `${size}px`,
-    toCssPixels: (val, canvas) => val / (canvas.width / canvas.clientWidth)
-  }
-}));
+import {
+  drawBlurredLayer,
+  drawHighlightLayer,
+  drawRectangleLayer,
+  drawHighlighterLayer,
+  drawTextLayer,
+} from '../../editor/crop/drawers.js';
 
-import ImageEditor from '../editor/EditorCore.js';
+import {
+  applyRectLayerToCroppedCanvas,
+  applyLineLayerToCroppedCanvas,
+} from '../../editor/crop/layerApplier.js';
 
-describe('ImageEditor - Crop Methods', () => {
-  let editor;
+import { calculateVisibleArea } from '../../editor/utils/geometry.js';
+
+describe('crop / drawers', () => {
+  let ctx;
+  let originalImage;
 
   beforeEach(() => {
-    // Создаем минимальный моковый редактор для тестирования методов
-    editor = {
-      originalImage: {
-        naturalWidth: 800,
-        naturalHeight: 600,
-        width: 800,
-        height: 600
-      },
-      canvas: {
-        width: 800,
-        height: 600,
-        clientWidth: 800,
-        clientHeight: 600
-      },
-      context: {
-        drawImage: vi.fn(),
-        save: vi.fn(),
-        restore: vi.fn(),
-        clearRect: vi.fn(),
-        getImageData: vi.fn(() => ({ data: new Uint8ClampedArray(100) })),
-        putImageData: vi.fn(),
-        strokeRect: vi.fn(),
-        fillText: vi.fn(),
-        measureText: vi.fn(() => ({ width: 50 })),
-        fillStyle: '',
-        font: '',
-        textAlign: '',
-        textBaseline: '',
-        strokeStyle: '',
-        lineWidth: 1,
-        filter: '',
-        beginPath: vi.fn(),
-        moveTo: vi.fn(),
-        lineTo: vi.fn(),
-        stroke: vi.fn(),
-        clip: vi.fn(),
-        rect: vi.fn(),
-        fill: vi.fn(),
-        closePath: vi.fn(),
-        arc: vi.fn()
-      },
-      CONSTANTS: {
-        LINE_WIDTH: 2
-      },
-      wrapTextInRect: vi.fn()
+    originalImage = { /* mock image */ };
+    ctx = {
+      drawImage: vi.fn(),
+      save: vi.fn(),
+      restore: vi.fn(),
+      strokeRect: vi.fn(),
+      fillText: vi.fn(),
+      measureText: vi.fn(() => ({ width: 50 })),
+      fillStyle: '',
+      font: '',
+      textAlign: '',
+      textBaseline: '',
+      strokeStyle: '',
+      lineWidth: 1,
+      filter: '',
+      beginPath: vi.fn(),
+      moveTo: vi.fn(),
+      lineTo: vi.fn(),
+      stroke: vi.fn(),
+      clip: vi.fn(),
+      rect: vi.fn(),
+      fill: vi.fn(),
+      closePath: vi.fn(),
+      arc: vi.fn(),
+      globalAlpha: 1,
     };
-
-    // Привязываем методы из прототипа
-    Object.setPrototypeOf(editor, ImageEditor.prototype);
   });
 
-  describe('_calculateVisibleArea', () => {
+  describe('calculateVisibleArea', () => {
     it('должен правильно вычислять видимую область для слоя полностью внутри кропа', () => {
       const cropCoords = {
         validX: 100,
@@ -104,7 +57,7 @@ describe('ImageEditor - Crop Methods', () => {
         validHeight: 200
       };
 
-      const result = editor._calculateVisibleArea(120, 120, 50, 50, cropCoords);
+      const result = calculateVisibleArea(120, 120, 50, 50, cropCoords);
 
       expect(result.validX).toBe(20);
       expect(result.validY).toBe(20);
@@ -120,7 +73,7 @@ describe('ImageEditor - Crop Methods', () => {
         validHeight: 200
       };
 
-      const result = editor._calculateVisibleArea(80, 120, 50, 50, cropCoords);
+      const result = calculateVisibleArea(80, 120, 50, 50, cropCoords);
 
       expect(result.validX).toBeGreaterThanOrEqual(0);
       expect(result.validY).toBeGreaterThanOrEqual(0);
@@ -134,13 +87,13 @@ describe('ImageEditor - Crop Methods', () => {
         validHeight: 200
       };
 
-      const result = editor._calculateVisibleArea(350, 120, 50, 50, cropCoords);
+      const result = calculateVisibleArea(350, 120, 50, 50, cropCoords);
 
       expect(result.validWidth - result.validX).toBeLessThanOrEqual(0);
     });
   });
 
-  describe('_drawHighlightLayer', () => {
+  describe('drawHighlightLayer', () => {
     it('должен рисовать highlight рамку из 4 линий с правильными координатами', () => {
       const cropCoords = {
         validX: 100,
@@ -149,8 +102,8 @@ describe('ImageEditor - Crop Methods', () => {
         validHeight: 200
       };
 
-      editor._drawHighlightLayer(
-        editor.context,
+      drawHighlightLayer(
+        ctx,
         150, // layerOrigX
         150, // layerOrigY
         100, // layerOrigWidth
@@ -159,10 +112,9 @@ describe('ImageEditor - Crop Methods', () => {
         cropCoords
       );
 
-      // Рамка рисуется через moveTo/lineTo, а не strokeRect
-      expect(editor.context.moveTo).toHaveBeenCalled();
-      expect(editor.context.lineTo).toHaveBeenCalled();
-      expect(editor.context.stroke).toHaveBeenCalled();
+      expect(ctx.moveTo).toHaveBeenCalled();
+      expect(ctx.lineTo).toHaveBeenCalled();
+      expect(ctx.stroke).toHaveBeenCalled();
     });
 
     it('не должен рисовать линии для слоя полностью за пределами кропа', () => {
@@ -173,8 +125,8 @@ describe('ImageEditor - Crop Methods', () => {
         validHeight: 200
       };
 
-      editor._drawHighlightLayer(
-        editor.context,
+      drawHighlightLayer(
+        ctx,
         500, // layerOrigX - далеко за пределами
         500, // layerOrigY
         100, // layerOrigWidth
@@ -183,13 +135,12 @@ describe('ImageEditor - Crop Methods', () => {
         cropCoords
       );
 
-      // Слой полностью за пределами кропа — линии не рисуются, но stroke() может вызваться с пустым path
-      expect(editor.context.moveTo).not.toHaveBeenCalled();
-      expect(editor.context.lineTo).not.toHaveBeenCalled();
+      expect(ctx.moveTo).not.toHaveBeenCalled();
+      expect(ctx.lineTo).not.toHaveBeenCalled();
     });
   });
 
-  describe('_drawTextLayer', () => {
+  describe('drawTextLayer', () => {
     it('должен рисовать текст с правильными координатами', () => {
       const cropCoords = {
         validX: 100,
@@ -198,8 +149,8 @@ describe('ImageEditor - Crop Methods', () => {
         validHeight: 200
       };
 
-      editor._drawTextLayer(
-        editor.context,
+      drawTextLayer(
+        ctx,
         150, // layerOrigX
         150, // layerOrigY
         100, // layerOrigWidth
@@ -208,11 +159,11 @@ describe('ImageEditor - Crop Methods', () => {
         cropCoords
       );
 
-      expect(editor.wrapTextInRect).toHaveBeenCalled();
+      expect(ctx.fillText).toHaveBeenCalled();
     });
   });
 
-  describe('_drawBlurredLayer', () => {
+  describe('drawBlurredLayer', () => {
     it('должен рисовать размытую область', () => {
       const cropCoords = {
         validX: 100,
@@ -221,17 +172,18 @@ describe('ImageEditor - Crop Methods', () => {
         validHeight: 200
       };
 
-      editor._drawBlurredLayer(
-        editor.context,
+      drawBlurredLayer(
+        ctx,
         150, // layerOrigX
         150, // layerOrigY
         100, // layerOrigWidth
         100, // layerOrigHeight
         { radius: 5 },
-        cropCoords
+        cropCoords,
+        originalImage
       );
 
-      expect(editor.context.drawImage).toHaveBeenCalled();
+      expect(ctx.drawImage).toHaveBeenCalled();
     });
 
     it('не должен рисовать если слой полностью за пределами кропа', () => {
@@ -242,21 +194,22 @@ describe('ImageEditor - Crop Methods', () => {
         validHeight: 200
       };
 
-      editor._drawBlurredLayer(
-        editor.context,
+      drawBlurredLayer(
+        ctx,
         500, // layerOrigX - далеко за пределами
         500, // layerOrigY
         100, // layerOrigWidth
         100, // layerOrigHeight
         { radius: 5 },
-        cropCoords
+        cropCoords,
+        originalImage
       );
 
-      expect(editor.context.drawImage).not.toHaveBeenCalled();
+      expect(ctx.drawImage).not.toHaveBeenCalled();
     });
   });
 
-  describe('_applyLineLayerToCroppedCanvas', () => {
+  describe('applyLineLayerToCroppedCanvas', () => {
     it('не должен рисовать линии полностью за пределами кропа', () => {
       const cropCoords = {
         validX: 100,
@@ -272,11 +225,11 @@ describe('ImageEditor - Crop Methods', () => {
         params: { color: '#ff0000', thickness: 2 }
       };
 
-      editor._applyLineLayerToCroppedCanvas(editor.context, layer, cropCoords);
+      applyLineLayerToCroppedCanvas(ctx, layer, cropCoords);
 
-      expect(editor.context.moveTo).not.toHaveBeenCalled();
-      expect(editor.context.lineTo).not.toHaveBeenCalled();
-      expect(editor.context.stroke).not.toHaveBeenCalled();
+      expect(ctx.moveTo).not.toHaveBeenCalled();
+      expect(ctx.lineTo).not.toHaveBeenCalled();
+      expect(ctx.stroke).not.toHaveBeenCalled();
     });
 
     it('должен рисовать линию внутри кроп-области', () => {
@@ -294,13 +247,13 @@ describe('ImageEditor - Crop Methods', () => {
         params: { color: '#ff0000', thickness: 2 }
       };
 
-      editor._applyLineLayerToCroppedCanvas(editor.context, layer, cropCoords);
+      applyLineLayerToCroppedCanvas(ctx, layer, cropCoords);
 
-      expect(editor.context.moveTo).toHaveBeenCalledWith(50, 50);
+      expect(ctx.moveTo).toHaveBeenCalledWith(50, 50);
     });
   });
 
-  describe('_applyRectLayerToCroppedCanvas', () => {
+  describe('applyRectLayerToCroppedCanvas', () => {
     it('должен пропускать слои полностью за пределами кроп-области', () => {
       const cropCoords = {
         validX: 100,
@@ -317,9 +270,9 @@ describe('ImageEditor - Crop Methods', () => {
         type: 'highlight'
       };
 
-      editor._applyRectLayerToCroppedCanvas(editor.context, layer, cropCoords);
+      applyRectLayerToCroppedCanvas(ctx, layer, cropCoords, originalImage, vi.fn(), 2);
 
-      expect(editor.context.strokeRect).not.toHaveBeenCalled();
+      expect(ctx.strokeRect).not.toHaveBeenCalled();
     });
 
     it('должен обрабатывать highlight слой внутри кроп-области', () => {
@@ -338,12 +291,11 @@ describe('ImageEditor - Crop Methods', () => {
         type: 'highlight'
       };
 
-      editor._applyRectLayerToCroppedCanvas(editor.context, layer, cropCoords);
+      applyRectLayerToCroppedCanvas(ctx, layer, cropCoords, originalImage, vi.fn(), 2);
 
-      // highlight слой теперь рисуется через _drawHighlightLayer (moveTo/lineTo/stroke)
-      expect(editor.context.moveTo).toHaveBeenCalled();
-      expect(editor.context.lineTo).toHaveBeenCalled();
-      expect(editor.context.stroke).toHaveBeenCalled();
+      expect(ctx.moveTo).toHaveBeenCalled();
+      expect(ctx.lineTo).toHaveBeenCalled();
+      expect(ctx.stroke).toHaveBeenCalled();
     });
   });
 });
