@@ -232,6 +232,10 @@ export default class ImageEditor {
     // Состояние для троттлинга onMouseMove через requestAnimationFrame
     this._rafId = null;
     this._pendingDragState = null;
+
+    // Throttle render() через requestAnimationFrame
+    this._rafRenderId = null;
+    this._pendingDirtyRegion = null;
   }
 
   /**
@@ -601,20 +605,41 @@ export default class ImageEditor {
     this.imageWidthElement.textContent = `${this.canvas.width}px`;
     this.imageHeightElement.textContent = `${this.canvas.height}px`;
 
-    // Приблизительный размер файла после сохранения
-    this.canvas.toBlob((blob) => {
-      if (blob) {
-        this.fileSizeElement.textContent = `${Math.round(blob.size / 1024)} КБ`;
-      }
-    }, 'image/png');
+    // Приблизительный размер файла после сохранения (с debounce)
+    if (this._fileSizeDebounceTimer) {
+      clearTimeout(this._fileSizeDebounceTimer);
+    }
+    this._fileSizeDebounceTimer = setTimeout(() => {
+      if (!this.canvas || !this.fileSizeElement) return;
+      this.canvas.toBlob((blob) => {
+        if (blob && this.fileSizeElement) {
+          this.fileSizeElement.textContent = `${Math.round(blob.size / 1024)} КБ`;
+        }
+      }, 'image/png');
+    }, 300);
   }
 
   /**
-     * Основной метод перерисовки (прокси на CanvasManager)
+     * Основной метод перерисовки (прокси на CanvasManager).
+     * Throttle через requestAnimationFrame: если render вызывается несколько
+     * раз за кадр, dirtyRegion'ы объединяются и отрисовка происходит один раз.
      * @param {Object|null} dirtyRegion - { x, y, width, height } для частичного рендера.
      */
   render(dirtyRegion = null) {
-    this.canvasManager.render(dirtyRegion);
+    if (this._rafRenderId) {
+      // Уже запланирован кадр — объединяем регионы
+      this._pendingDirtyRegion = Helper.mergeDirtyRegions(this._pendingDirtyRegion, dirtyRegion);
+      return;
+    }
+
+    this._pendingDirtyRegion = dirtyRegion;
+
+    this._rafRenderId = requestAnimationFrame(() => {
+      this._rafRenderId = null;
+      const region = this._pendingDirtyRegion;
+      this._pendingDirtyRegion = null;
+      this.canvasManager.render(region);
+    });
   }
 
   /**

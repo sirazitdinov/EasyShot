@@ -58,4 +58,27 @@ export default class Helper {
     const scale = Helper.getScaleFactor(canvas, dpr);
     return scale === 0 ? 0 : cssValue / scale;
   }
+
+  /**
+   * Объединяет два прямоугольных региона (dirty regions).
+   * @param {Object|null} a — { x, y, width, height }
+   * @param {Object|null} b — { x, y, width, height }
+   * @returns {Object|null}
+   */
+  static mergeDirtyRegions(a, b) {
+    if (!a) return b;
+    if (!b) return a;
+
+    const x1 = Math.min(a.x, b.x);
+    const y1 = Math.min(a.y, b.y);
+    const x2 = Math.max(a.x + a.width, b.x + b.width);
+    const y2 = Math.max(a.y + a.height, b.y + b.height);
+
+    return {
+      x: x1,
+      y: y1,
+      width: x2 - x1,
+      height: y2 - y1
+    };
+  }
 }

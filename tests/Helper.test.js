@@ -137,4 +137,36 @@ describe('Helper', () => {
       expect(result).toBe(100)
     })
   })
+
+  describe('mergeDirtyRegions', () => {
+    it('должен объединять два пересекающихся региона', () => {
+      const a = { x: 0, y: 0, width: 50, height: 50 }
+      const b = { x: 30, y: 30, width: 50, height: 50 }
+      const result = Helper.mergeDirtyRegions(a, b)
+
+      expect(result).toEqual({ x: 0, y: 0, width: 80, height: 80 })
+    })
+
+    it('должен объединять два непересекающихся региона', () => {
+      const a = { x: 0, y: 0, width: 10, height: 10 }
+      const b = { x: 100, y: 100, width: 20, height: 20 }
+      const result = Helper.mergeDirtyRegions(a, b)
+
+      expect(result).toEqual({ x: 0, y: 0, width: 120, height: 120 })
+    })
+
+    it('должен возвращать второй регион если первый null', () => {
+      const b = { x: 10, y: 10, width: 30, height: 30 }
+      expect(Helper.mergeDirtyRegions(null, b)).toBe(b)
+    })
+
+    it('должен возвращать первый регион если второй null', () => {
+      const a = { x: 10, y: 10, width: 30, height: 30 }
+      expect(Helper.mergeDirtyRegions(a, null)).toBe(a)
+    })
+
+    it('должен возвращать null если оба региона null', () => {
+      expect(Helper.mergeDirtyRegions(null, null)).toBeNull()
+    })
+  })
 })

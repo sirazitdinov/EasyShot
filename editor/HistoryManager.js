@@ -20,7 +20,7 @@ export default class HistoryManager {
     this.editor = editor;
     this.maxHistory = options.maxHistory ?? 50;
     this.deduplicate = options.deduplicate ?? true;
-    this.maxMemoryBytes = (options.maxMemoryMB ?? 200) * 1024 * 1024;
+    this.maxMemoryBytes = (options.maxMemoryMB ?? 100) * 1024 * 1024;
 
     this.history = [];
     this.position = -1;
@@ -41,7 +41,7 @@ export default class HistoryManager {
     if (!snapshotSize) return this.maxHistory;
 
     const limitByMemory = Math.floor(this.maxMemoryBytes / snapshotSize);
-    return Math.max(2, Math.min(this.maxHistory, limitByMemory));
+    return Math.max(3, Math.min(this.maxHistory, limitByMemory));
   }
 
   /**
@@ -130,10 +130,27 @@ export default class HistoryManager {
     const ctx = this.editor.context;
     const layers = this.editor.layerManager?.layers || [];
 
+    let offscreenCanvas = null;
+    let imageData = null;
+
+    try {
+      if (typeof OffscreenCanvas !== 'undefined') {
+        offscreenCanvas = new OffscreenCanvas(canvas.width, canvas.height);
+        const offCtx = offscreenCanvas.getContext('2d');
+        offCtx.drawImage(canvas, 0, 0);
+      } else {
+        imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      }
+    } catch (e) {
+      // Fallback если OffscreenCanvas недоступен или drawImage упал
+      imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    }
+
     return {
       timestamp: Date.now(),
       label,
-      imageData: ctx.getImageData(0, 0, canvas.width, canvas.height),
+      offscreenCanvas,
+      imageData,
       layers: layers.map(l => ({
         id: l.id,
         type: l.type,
@@ -155,10 +172,24 @@ export default class HistoryManager {
      * @returns {boolean}
      */
   isStateEqual(a, b) {
-    if (!a?.imageData || !b?.imageData) return a === b;
+    if (!a || !b) return a === b;
 
-    const d1 = a.imageData.data;
-    const d2 = b.imageData.data;
+    let d1, d2;
+
+    if (a.imageData && b.imageData) {
+      d1 = a.imageData.data;
+      d2 = b.imageData.data;
+    } else if (a.offscreenCanvas && b.offscreenCanvas) {
+      const w = a.offscreenCanvas.width;
+      const h = a.offscreenCanvas.height;
+      if (w !== b.offscreenCanvas.width || h !== b.offscreenCanvas.height) return false;
+      const ctx1 = a.offscreenCanvas.getContext('2d');
+      const ctx2 = b.offscreenCanvas.getContext('2d');
+      d1 = ctx1.getImageData(0, 0, w, h).data;
+      d2 = ctx2.getImageData(0, 0, w, h).data;
+    } else {
+      return false;
+    }
 
     if (d1.length !== d2.length) return false;
 
@@ -217,13 +248,19 @@ export default class HistoryManager {
      * @param {Object} state — результат captureState()
      */
   restoreState(state) {
-    if (!state?.imageData) return;
+    if (!state) return;
 
-    const { imageData, layers, activeLayerId, activeToolName } = state;
+    const { offscreenCanvas, imageData, layers, activeLayerId, activeToolName } = state;
     const layerManager = this.editor.layerManager;
 
     // 1. Восстанавливаем пиксели
-    this.editor.context.putImageData(imageData, 0, 0);
+    if (offscreenCanvas) {
+      this.editor.context.drawImage(offscreenCanvas, 0, 0);
+    } else if (imageData) {
+      this.editor.context.putImageData(imageData, 0, 0);
+    } else {
+      return;
+    }
 
     // 2. Восстанавливаем слои полностью
     if (layerManager && Array.isArray(layers)) {
@@ -268,8 +305,32 @@ export default class HistoryManager {
     return this.history[this.position].label || `Шаг ${this.position}`;
   }
 
+  /**
+     * Возвращает приблизительный объём памяти, занимаемый историей (в байтах).
+     * @returns {number}
+     */
+  getMemoryUsage() {
+    let bytes = 0;
+    for (const state of this.history) {
+      if (state.imageData) {
+        bytes += state.imageData.data.byteLength;
+      } else if (state.offscreenCanvas) {
+        bytes += state.offscreenCanvas.width * state.offscreenCanvas.height * 4;
+      }
+    }
+    return bytes;
+  }
+
   destroy() {
     try {
+      // Очищаем offscreenCanvas в каждом состоянии
+      for (const state of this.history) {
+        if (state.offscreenCanvas) {
+          state.offscreenCanvas.width = 0;
+          state.offscreenCanvas.height = 0;
+        }
+      }
+
       // Очищаем историю
       this.history = [];
       this.position = -1;

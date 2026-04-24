@@ -9,7 +9,7 @@ function createMockEditor() {
     width: 100,
     height: 100
   }
-  
+
   const context = {
     getImageData: vi.fn(() => {
       // Возвращаем разные данные для каждого вызова чтобы избежать дедупликации
@@ -18,19 +18,20 @@ function createMockEditor() {
         data: new Uint8ClampedArray(100 * 100 * 4).fill(callCounter)
       }
     }),
-    putImageData: vi.fn()
+    putImageData: vi.fn(),
+    drawImage: vi.fn()
   }
-  
+
   const layerManager = {
     layers: [],
     activeLayer: null,
     setActiveLayerById: vi.fn()
   }
-  
+
   const updateToolbarButtons = vi.fn()
   const render = vi.fn()
   const updateLayersPanel = vi.fn()
-  
+
   const editor = {
     canvas,
     context,
@@ -40,11 +41,11 @@ function createMockEditor() {
     render,
     updateLayersPanel
   }
-  
+
   // Метод для сброса счётчика (для тестов дедупликации)
   editor.resetCounter = () => { callCounter = 0 }
   editor.setCounter = (val) => { callCounter = val }
-  
+
   return editor
 }
 
@@ -60,9 +61,10 @@ describe('HistoryManager', () => {
   describe('constructor', () => {
     it('должен инициализироваться с параметрами по умолчанию', () => {
       const hm = new HistoryManager(editor)
-      
+
       expect(hm.maxHistory).toBe(50)
       expect(hm.deduplicate).toBe(true)
+      expect(hm.maxMemoryBytes).toBe(100 * 1024 * 1024)
       expect(hm.history).toEqual([])
       expect(hm.position).toBe(-1)
     })
@@ -122,16 +124,28 @@ describe('HistoryManager', () => {
 
     it('должен соблюдать maxHistory', () => {
       const hm = new HistoryManager(editor, { maxHistory: 3 })
-      
+
       hm.commit('Action 1')
       hm.commit('Action 2')
       hm.commit('Action 3')
       hm.commit('Action 4')
-      
+
       expect(hm.history.length).toBe(3)
       expect(hm.history[0].label).toBe('Action 2')
       expect(hm.history[1].label).toBe('Action 3')
       expect(hm.history[2].label).toBe('Action 4')
+    })
+
+    it('должен ограничивать историю по памяти с минимумом 3', () => {
+      // Для canvas 100x100 размер снимка = 40 000 байт
+      // При maxMemoryBytes = 100 MB лимит ~2621, но min = 3
+      const hm = new HistoryManager(editor, { maxMemoryMB: 100 })
+
+      hm.commit('Action 1')
+      hm.commit('Action 2')
+      hm.commit('Action 3')
+
+      expect(hm.history.length).toBe(3)
     })
 
     it('должен сохранять snapshot состояния слоёв', () => {
@@ -211,17 +225,40 @@ describe('HistoryManager', () => {
 
     it('должен восстанавливать состояние при undo', () => {
       editor.layerManager.layers = [{ id: 'layer1', type: 'base', visible: true, rect: null, points: null, params: {} }]
-      
+
       historyManager.commit('State 1')
-      
+
       // Изменяем слой
       editor.layerManager.layers[0].rect = { x: 10, y: 10, width: 50, height: 50 }
       historyManager.commit('State 2')
-      
+
       historyManager.undo()
-      
+
       expect(editor.context.putImageData).toHaveBeenCalled()
       expect(editor.updateLayersPanel).toHaveBeenCalled()
+    })
+
+    it('должен использовать drawImage при восстановлении offscreenCanvas', () => {
+      // Создаём состояние с offscreenCanvas
+      const state = {
+        offscreenCanvas: {
+          width: 100,
+          height: 100,
+          getContext: vi.fn(() => ({
+            getImageData: vi.fn(() => ({
+              data: new Uint8ClampedArray(100 * 100 * 4).fill(1)
+            }))
+          }))
+        },
+        imageData: null,
+        layers: [],
+        activeLayerId: null,
+        activeToolName: null
+      }
+
+      historyManager.restoreState(state)
+
+      expect(editor.context.drawImage).toHaveBeenCalledWith(state.offscreenCanvas, 0, 0)
     })
   })
 
@@ -284,14 +321,40 @@ describe('HistoryManager', () => {
     })
   })
 
+  describe('getMemoryUsage', () => {
+    it('должен возвращать приблизительный объём памяти истории', () => {
+      historyManager.commit('Action 1')
+      historyManager.commit('Action 2')
+
+      const usage = historyManager.getMemoryUsage()
+      // Каждый снимок 100x100x4 = 40000 байт
+      expect(usage).toBeGreaterThanOrEqual(40000 * 2)
+    })
+
+    it('должен возвращать 0 для пустой истории', () => {
+      expect(historyManager.getMemoryUsage()).toBe(0)
+    })
+  })
+
   describe('destroy', () => {
     it('должен очищать все данные', () => {
       historyManager.commit('Action')
       historyManager.destroy()
-      
+
       expect(historyManager.history).toEqual([])
       expect(historyManager.position).toBe(-1)
       expect(historyManager.editor).toBe(null)
+    })
+
+    it('должен сбрасывать размеры offscreenCanvas при уничтожении', () => {
+      historyManager.commit('Action')
+      const canvas = historyManager.history[0]?.offscreenCanvas
+      historyManager.destroy()
+
+      if (canvas) {
+        expect(canvas.width).toBe(0)
+        expect(canvas.height).toBe(0)
+      }
     })
   })
 })

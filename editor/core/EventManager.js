@@ -414,6 +414,28 @@ export default class EventManager {
   }
 
   /**
+   * Вычисляет dirty region на основе старых и новых границ слоя.
+   * @param {Object} oldBounds — { x, y, width, height }
+   * @param {Object} newBounds — { x, y, width, height }
+   * @param {number} padding — дополнительный отступ (для ручек/теней)
+   * @returns {Object}
+   */
+  _getDragDirtyRegion(oldBounds, newBounds, padding = 20) {
+    const canvas = this.editor.canvas;
+    const x = Math.min(oldBounds.x, newBounds.x) - padding;
+    const y = Math.min(oldBounds.y, newBounds.y) - padding;
+    const x2 = Math.max(oldBounds.x + oldBounds.width, newBounds.x + newBounds.width) + padding;
+    const y2 = Math.max(oldBounds.y + oldBounds.height, newBounds.y + newBounds.height) + padding;
+
+    return {
+      x: Math.max(0, Math.floor(x)),
+      y: Math.max(0, Math.floor(y)),
+      width: Math.min(canvas.width, Math.ceil(x2 - x)),
+      height: Math.min(canvas.height, Math.ceil(y2 - y))
+    };
+  }
+
+  /**
    * Обрабатывает один кадр перетаскивания/изменения размера
    * Вызывается внутри requestAnimationFrame
    */
@@ -440,6 +462,16 @@ export default class EventManager {
 
       const coords = this.getCanvasCoords(e);
       const { handle, layer, start, orig } = dragState;
+
+      // Запоминаем старые границы для dirty region (копируем, чтобы не изменились при mutate)
+      const tool = this.editor.tools[layer.type];
+      const rawOldBounds = tool?.getBounds?.(layer) || layer.rect || {
+        x: Math.min(layer.points.x1, layer.points.x2),
+        y: Math.min(layer.points.y1, layer.points.y2),
+        width: Math.abs(layer.points.x2 - layer.points.x1),
+        height: Math.abs(layer.points.y2 - layer.points.y1)
+      };
+      const oldBounds = { ...rawOldBounds };
 
       if (handle === 'create') {
         const x1 = Math.min(start.x, coords.x);
@@ -482,7 +514,16 @@ export default class EventManager {
         layer.points[handle === 'x1' ? 'y1' : 'y2'] = Math.max(0, Math.min(this.editor.canvas.height, coords.y));
       }
 
-      this.editor.render();
+      // Вычисляем новые границы и dirty region
+      const newBounds = tool?.getBounds?.(layer) || layer.rect || {
+        x: Math.min(layer.points.x1, layer.points.x2),
+        y: Math.min(layer.points.y1, layer.points.y2),
+        width: Math.abs(layer.points.x2 - layer.points.x1),
+        height: Math.abs(layer.points.y2 - layer.points.y1)
+      };
+
+      const dirtyRegion = this._getDragDirtyRegion(oldBounds, newBounds, 24);
+      this.editor.render(dirtyRegion);
 
       // Обновляем overlay активного инструмента для отображения превью
       if (this.editor.activeTool && typeof this.editor.activeTool.updateOverlay === 'function') {
@@ -519,6 +560,7 @@ export default class EventManager {
       this.editor.selectionOverlay.className = '';
       this.editor.selectionOverlay.style.cursor = 'default';
 
+      // Полная перерисовка после завершения операции (чтобы ручки и overlay отрисовались)
       this.editor.render();
       this.editor.updateLayersPanel();
 

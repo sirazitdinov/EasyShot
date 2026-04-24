@@ -247,7 +247,10 @@ describe('EventManager', () => {
     });
 
     it('должен обновлять rect при create-режиме', () => {
-      const layer = { rect: { x: 0, y: 0, width: 0, height: 0 } };
+      const layer = { type: 'rectangle', rect: { x: 0, y: 0, width: 0, height: 0 } };
+      editor.tools = {
+        rectangle: { getBounds: vi.fn((l) => l.rect) }
+      };
       em.dragState = { start: { x: 10, y: 10 }, layer, handle: 'create', orig: { ...layer.rect } };
 
       em.onMouseMove(createMouseEvent(110, 90));
@@ -257,8 +260,26 @@ describe('EventManager', () => {
       expect(editor.render).toHaveBeenCalled();
     });
 
+    it('должен передавать dirtyRegion при drag', () => {
+      const layer = { type: 'rectangle', rect: { x: 10, y: 10, width: 50, height: 50 } };
+      editor.tools = {
+        rectangle: { getBounds: vi.fn((l) => l.rect) }
+      };
+      em.dragState = { start: { x: 10, y: 10 }, layer, handle: 'move', orig: { ...layer.rect } };
+
+      em.onMouseMove(createMouseEvent(30, 40));
+
+      const renderCall = editor.render.mock.calls[0];
+      expect(renderCall[0]).toBeDefined();
+      expect(renderCall[0].x).toBeLessThanOrEqual(10);
+      expect(renderCall[0].y).toBeLessThanOrEqual(10);
+    });
+
     it('должен двигать слой при move-режиме', () => {
-      const layer = { rect: { x: 10, y: 10, width: 50, height: 50 } };
+      const layer = { type: 'rectangle', rect: { x: 10, y: 10, width: 50, height: 50 } };
+      editor.tools = {
+        rectangle: { getBounds: vi.fn((l) => l.rect) }
+      };
       em.dragState = { start: { x: 10, y: 10 }, layer, handle: 'move', orig: { ...layer.rect } };
 
       em.onMouseMove(createMouseEvent(30, 40));
@@ -268,13 +289,45 @@ describe('EventManager', () => {
     });
 
     it('должен обновлять точки линии при x1/x2 handle', () => {
-      const layer = { points: { x1: 10, y1: 10, x2: 50, y2: 50 } };
+      const layer = { type: 'line', points: { x1: 10, y1: 10, x2: 50, y2: 50 } };
+      editor.tools = {
+        line: { getBounds: vi.fn((l) => ({
+          x: Math.min(l.points.x1, l.points.x2),
+          y: Math.min(l.points.y1, l.points.y2),
+          width: Math.abs(l.points.x2 - l.points.x1),
+          height: Math.abs(l.points.y2 - l.points.y1)
+        })) }
+      };
       em.dragState = { start: { x: 0, y: 0 }, layer, handle: 'x2', orig: { ...layer.points } };
 
       em.onMouseMove(createMouseEvent(100, 100));
 
       expect(layer.points.x2).toBe(100);
       expect(layer.points.y2).toBe(100);
+    });
+
+    describe('_getDragDirtyRegion', () => {
+      it('должен объединять старые и новые границы с padding', () => {
+        const oldBounds = { x: 10, y: 10, width: 50, height: 50 };
+        const newBounds = { x: 30, y: 30, width: 50, height: 50 };
+        const region = em._getDragDirtyRegion(oldBounds, newBounds, 10);
+
+        expect(region.x).toBe(0);
+        expect(region.y).toBe(0);
+        expect(region.width).toBe(90);
+        expect(region.height).toBe(90);
+      });
+
+      it('должен ограничивать region размерами canvas', () => {
+        const oldBounds = { x: 0, y: 0, width: 10, height: 10 };
+        const newBounds = { x: 790, y: 590, width: 10, height: 10 };
+        const region = em._getDragDirtyRegion(oldBounds, newBounds, 20);
+
+        expect(region.x).toBe(0);
+        expect(region.y).toBe(0);
+        expect(region.width).toBe(800);
+        expect(region.height).toBe(600);
+      });
     });
   });
 

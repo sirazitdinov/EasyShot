@@ -63,9 +63,48 @@ class PixelRuler {
     // Создаем элементы для изменения размера (ручки)
     this.createResizeHandles();
 
+    // Создаём элементы отображения размеров один раз
+    this.widthDisplay = document.createElement('div');
+    this.widthDisplay.id = 'pixel-ruler-width-display';
+    this.widthDisplay.style.cssText = `
+        position: fixed;
+        background: rgba(0, 0, 0, 0.8);
+        color: white;
+        padding: 2px 6px;
+        border-radius: 3px;
+        font-family: 'Arial', sans-serif;
+        font-size: 11px;
+        font-weight: bold;
+        pointer-events: none;
+        z-index: 2147483647;
+        white-space: nowrap;
+        display: none;
+    `;
+
+    this.heightDisplay = document.createElement('div');
+    this.heightDisplay.id = 'pixel-ruler-height-display';
+    this.heightDisplay.style.cssText = `
+        position: fixed;
+        background: rgba(0, 0, 0, 0.8);
+        color: white;
+        padding: 6px 2px;
+        border-radius: 3px;
+        font-family: 'Arial', sans-serif;
+        font-size: 11px;
+        font-weight: bold;
+        pointer-events: none;
+        z-index: 2147483647;
+        writing-mode: vertical-lr;
+        text-orientation: mixed;
+        transform: rotate(180deg);
+        display: none;
+    `;
+
     // Добавляем элементы в DOM
     document.body.appendChild(this.overlay);
     document.body.appendChild(this.rulerElement);
+    document.body.appendChild(this.widthDisplay);
+    document.body.appendChild(this.heightDisplay);
   }
 
   bindEvents() {
@@ -363,63 +402,20 @@ class PixelRuler {
   }
 
   updateSizeDisplays(startX, startY, rectLeft, rectTop, width, height, isRightDirection, isDownDirection) {
-    // Удаляем старые элементы отображения, если они есть
-    const oldWidthDisplay = document.getElementById('pixel-ruler-width-display');
-    const oldHeightDisplay = document.getElementById('pixel-ruler-height-display');
-
-    if (oldWidthDisplay) oldWidthDisplay.remove();
-    if (oldHeightDisplay) oldHeightDisplay.remove();
-
-    // Создаем элемент для отображения ширины
-    const widthDisplay = document.createElement('div');
-    widthDisplay.id = 'pixel-ruler-width-display';
-    widthDisplay.style.cssText = `
-        position: fixed;
-        background: rgba(0, 0, 0, 0.8);
-        color: white;
-        padding: 2px 6px;
-        border-radius: 3px;
-        font-family: 'Arial', sans-serif;
-        font-size: 11px;
-        font-weight: bold;
-        pointer-events: none;
-        z-index: 2147483647;
-        white-space: nowrap;
-    `;
-
-    // Создаем элемент для отображения высоты (вертикальный)
-    const heightDisplay = document.createElement('div');
-    heightDisplay.id = 'pixel-ruler-height-display';
-    heightDisplay.style.cssText = `
-        position: fixed;
-        background: rgba(0, 0, 0, 0.8);
-        color: white;
-        padding: 6px 2px;
-        border-radius: 3px;
-        font-family: 'Arial', sans-serif;
-        font-size: 11px;
-        font-weight: bold;
-        pointer-events: none;
-        z-index: 2147483647;
-        writing-mode: vertical-lr;
-        text-orientation: mixed;
-        transform: rotate(180deg);
-    `;
-
-    // Добавляем элементы для расчета их размеров
-    widthDisplay.textContent = `←→ ${width}px`;
-    heightDisplay.textContent = `←→ ${height}px`;
-    document.body.appendChild(widthDisplay);
-    document.body.appendChild(heightDisplay);
-
     const OFFSET = 5; // Отступ от границы
-    const widthDisplayWidth = widthDisplay.offsetWidth;
-    const widthDisplayHeight = widthDisplay.offsetHeight;
-    const heightDisplayWidth = heightDisplay.offsetWidth;
-    const heightDisplayHeight = heightDisplay.offsetHeight;
+
+    // Обновляем текст
+    this.widthDisplay.textContent = `←→ ${width}px`;
+    this.heightDisplay.textContent = `←→ ${height}px`;
+
+    // Показываем элементы
+    this.widthDisplay.style.display = width > 10 ? 'block' : 'none';
+    this.heightDisplay.style.display = height > 10 ? 'block' : 'none';
 
     // Позиционирование ширины - всегда вдоль верхней или нижней границы
     if (width > 10) {
+      const widthDisplayWidth = this.widthDisplay.offsetWidth;
+      const widthDisplayHeight = this.widthDisplay.offsetHeight;
       let widthX, widthY;
 
       if (isRightDirection) {
@@ -443,12 +439,14 @@ class PixelRuler {
       widthX = Math.max(OFFSET, Math.min(widthX, window.innerWidth - widthDisplayWidth - OFFSET));
       widthY = Math.max(OFFSET, Math.min(widthY, window.innerHeight - widthDisplayHeight - OFFSET));
 
-      widthDisplay.style.left = `${widthX}px`;
-      widthDisplay.style.top = `${widthY}px`;
+      this.widthDisplay.style.left = `${widthX}px`;
+      this.widthDisplay.style.top = `${widthY}px`;
     }
 
     // Позиционирование высоты - всегда вдоль левой или правой границы
     if (height > 10) {
+      const heightDisplayWidth = this.heightDisplay.offsetWidth;
+      const heightDisplayHeight = this.heightDisplay.offsetHeight;
       let heightX, heightY;
 
       // Размещаем высоту с внешней стороны выделения
@@ -472,8 +470,8 @@ class PixelRuler {
       heightX = Math.max(OFFSET, Math.min(heightX, window.innerWidth - heightDisplayWidth - OFFSET));
       heightY = Math.max(OFFSET, Math.min(heightY, window.innerHeight - heightDisplayHeight - OFFSET));
 
-      heightDisplay.style.left = `${heightX}px`;
-      heightDisplay.style.top = `${heightY}px`;
+      this.heightDisplay.style.left = `${heightX}px`;
+      this.heightDisplay.style.top = `${heightY}px`;
     }
   }
 
@@ -513,18 +511,9 @@ class PixelRuler {
       });
     }
 
-    // Удаляем все элементы отображения размеров
-    const elementsToRemove = [
-      'pixel-ruler-width-display',
-      'pixel-ruler-height-display'
-    ];
-
-    elementsToRemove.forEach(id => {
-      const element = document.getElementById(id);
-      if (element && element.parentNode) {
-        element.parentNode.removeChild(element);
-      }
-    });
+    // Скрываем элементы отображения размеров
+    if (this.widthDisplay) this.widthDisplay.style.display = 'none';
+    if (this.heightDisplay) this.heightDisplay.style.display = 'none';
 
     console.log('Pixel Ruler deactivated');
   }
